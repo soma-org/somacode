@@ -59,6 +59,8 @@ const getBase = (): Configuration => ({
   },
   win: {
     icon: `resources/icons/icon.ico`,
+    // Off locally: avoids winCodeSign 7z extraction failing on Windows without symlink privileges.
+    signAndEditExecutable: process.env.GITHUB_ACTIONS === "true",
     signtoolOptions: {
       sign: signWindows,
     },
