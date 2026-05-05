@@ -74,7 +74,7 @@ export const SettingsProviders: Component = () => {
         </div>
       </div>
 
-      <div class="flex flex-col gap-8 max-w-[720px]">
+      <div class="flex flex-col gap-8 max-w-[720px] min-h-[500px]">
         <SettingsList>
           <Show
             when={connected()}
