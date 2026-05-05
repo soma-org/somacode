@@ -16,6 +16,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { useProviders } from "@/hooks/use-providers"
+import { FIXED_PROVIDER_ID } from "@/config/fixed-provider"
 
 export function DialogConnectProvider(props: { provider: string }) {
   const dialog = useDialog()
@@ -24,7 +25,7 @@ export function DialogConnectProvider(props: { provider: string }) {
   const language = useLanguage()
   const providers = useProviders()
 
-  const all = () => {
+  const openProviderPicker = () => {
     void import("./dialog-select-provider").then((x) => {
       dialog.show(() => <x.DialogSelectProvider />)
     })
@@ -343,8 +344,12 @@ export function DialogConnectProvider(props: { provider: string }) {
   }
 
   function goBack() {
+    if (props.provider === FIXED_PROVIDER_ID) {
+      dialog.close()
+      return
+    }
     if (methods().length === 1) {
-      all()
+      openProviderPicker()
       return
     }
     if (store.authorization) {
@@ -355,7 +360,7 @@ export function DialogConnectProvider(props: { provider: string }) {
       dispatch({ type: "method.reset" })
       return
     }
-    all()
+    openProviderPicker()
   }
 
   function MethodSelection() {
