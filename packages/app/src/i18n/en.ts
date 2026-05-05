@@ -674,6 +674,10 @@ export const dict = {
   "sidebar.menu.toggle": "Toggle menu",
   "sidebar.nav.projectsAndSessions": "Projects and sessions",
   "sidebar.settings": "Settings",
+  "sidebar.points.aria": "Points balance: {{count}}",
+  "sidebar.points.popoverTitle": "Points",
+  "sidebar.points.popoverBody":
+    "Your balance is saved on this device for now. Wire usePoints() to your API when you want live totals.",
   "sidebar.help": "Help",
   "sidebar.workspaces.enable": "Enable workspaces",
   "sidebar.workspaces.disable": "Disable workspaces",
