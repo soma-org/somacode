@@ -1,14 +1,51 @@
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
-import { createMemo, Show } from "solid-js"
-import { Tips } from "./tips-view"
+import type { TuiPlugin, TuiPluginModule } from "@somacode-ai/plugin/tui"
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
+import { shouldStartSomaLocalnet } from "../../../../start-soma-localnet"
+import { waitForSomacodeLocalnetReady } from "../../../../soma-embedded-provider"
+import { Tips, type EmbeddedLocalnetTip } from "./tips-view"
 
 const id = "internal:home-tips"
 
 function View(props: { show: boolean; connected: boolean }) {
+  const [embeddedLocalnet, setEmbeddedLocalnet] = createSignal<EmbeddedLocalnetTip>("off")
+
+  createEffect(() => {
+    if (!props.show || props.connected) {
+      setEmbeddedLocalnet("off")
+      return
+    }
+    if (!shouldStartSomaLocalnet()) {
+      setEmbeddedLocalnet("off")
+      return
+    }
+
+    const ac = new AbortController()
+    setEmbeddedLocalnet("starting")
+    void waitForSomacodeLocalnetReady(ac.signal).then((ok) => {
+      if (ac.signal.aborted) return
+      setEmbeddedLocalnet(ok ? "ready" : "timeout")
+    })
+
+    onCleanup(() => {
+      ac.abort()
+      setEmbeddedLocalnet("off")
+    })
+  })
+
   return (
-    <box height={4} minHeight={0} width="100%" maxWidth={75} alignItems="center" paddingTop={3} flexShrink={1}>
+    <box
+      height={4}
+      minHeight={0}
+      width="100%"
+      maxWidth={75}
+      alignItems="flex-start"
+      paddingTop={3}
+      /** Matches {@link Prompt} input inset: left border (1) + inner `paddingLeft` (2). */
+      paddingLeft={3}
+      flexShrink={1}
+    >
       <Show when={props.show}>
-        <Tips connected={props.connected} />
+        <Tips connected={props.connected} embeddedLocalnet={embeddedLocalnet()} />
       </Show>
     </box>
   )

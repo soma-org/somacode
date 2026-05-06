@@ -1,5 +1,6 @@
 import os from "os"
 import fuzzysort from "fuzzysort"
+import { SOMACODE_EMBEDDED_PROVIDER_BASE_URL } from "@/cli/soma-embedded-provider"
 import { Config } from "@/config/config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
@@ -30,9 +31,6 @@ import * as ProviderTransform from "./transform"
 import { ModelID, ProviderID } from "./schema"
 
 const log = Log.create({ service: "provider" })
-
-/** When unset in config, `opencode` / `opencode-go` requests use this host (embedded somaprovider). */
-const INTERNAL_SOMACODE_PROVIDER_BASE_URL = "http://127.0.0.1:9000"
 
 function shouldUseCopilotResponsesApi(modelID: string): boolean {
   const match = /^gpt-(\d+)/.exec(modelID)
@@ -770,7 +768,7 @@ const layer: Layer.Layer<
             model.providerID.startsWith("opencode") &&
             !(typeof options["baseURL"] === "string" && options["baseURL"] !== "")
           ) {
-            url = INTERNAL_SOMACODE_PROVIDER_BASE_URL
+            url = SOMACODE_EMBEDDED_PROVIDER_BASE_URL
           }
           if (!url) return
 

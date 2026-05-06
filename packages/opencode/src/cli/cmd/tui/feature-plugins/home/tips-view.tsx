@@ -30,21 +30,53 @@ function parse(tip: string): TipPart[] {
   return parts
 }
 
-const NO_MODELS_TIP = "Run {highlight}/connect{/highlight} to add an AI provider and start coding"
+const NOT_CONNECTED_EMBEDDED_TIP =
+  "Use {highlight}/models{/highlight} once the embedded provider has finished loading models"
 
-export function Tips(props: { connected?: boolean }) {
+export type EmbeddedLocalnetTip = "off" | "starting" | "ready" | "timeout"
+
+export function Tips(props: { connected?: boolean; embeddedLocalnet?: EmbeddedLocalnetTip }) {
   const theme = useTheme().theme
   const randomTip = TIPS[Math.floor(Math.random() * TIPS.length)]
-  const parts = createMemo(() => parse(props.connected === false ? NO_MODELS_TIP : randomTip))
+  const embedded = () => props.embeddedLocalnet ?? "off"
+  const parts = createMemo(() => {
+    if (embedded() !== "off") return parse("")
+    return parse(props.connected === false ? NOT_CONNECTED_EMBEDDED_TIP : randomTip)
+  })
+
+  const bulletStyle = createMemo(() => {
+    const e = embedded()
+    if (e === "ready") return { fg: theme.success }
+    if (e === "starting") return { fg: theme.warning }
+    if (e === "timeout") return { fg: theme.warning }
+    return { fg: theme.warning }
+  })
+
+  const statusParts = createMemo(() => {
+    const e = embedded()
+    if (e === "starting") return parse("Starting Soma localnet…")
+    if (e === "ready") return parse("Soma localnet started successfully")
+    if (e === "timeout") return parse("Soma localnet is taking longer than expected — check logs or try again")
+    return null
+  })
+
+  const lineParts = createMemo(() => (embedded() === "off" ? parts() : (statusParts() ?? [])))
 
   return (
     <box flexDirection="row" maxWidth="100%">
-      <text flexShrink={0} style={{ fg: theme.warning }}>
-        ● Tip{" "}
+      <text flexShrink={0} style={bulletStyle()}>
+        {embedded() === "off" ? "● Tip " : "● Local "}
       </text>
       <text flexShrink={1}>
-        <For each={parts()}>
-          {(part) => <span style={{ fg: part.highlight ? theme.text : theme.textMuted }}>{part.text}</span>}
+        <For each={lineParts()}>
+          {(part) => {
+            if (embedded() === "off") {
+              return (
+                <span style={{ fg: part.highlight ? theme.text : theme.textMuted }}>{part.text}</span>
+              )
+            }
+            return <span style={{ fg: theme.text }}>{part.text}</span>
+          }}
         </For>
       </text>
     </box>
@@ -83,36 +115,36 @@ const TIPS = [
   "Switch to {highlight}Plan{/highlight} agent to get suggestions without making actual changes",
   "Use {highlight}@agent-name{/highlight} in prompts to invoke specialized subagents",
   "Press {highlight}Ctrl+X Right/Left{/highlight} to cycle through parent and child sessions",
-  "Create {highlight}opencode.json{/highlight} for server settings and {highlight}tui.json{/highlight} for TUI settings",
+  "Create {highlight}somacode.json{/highlight} for server settings and {highlight}tui.json{/highlight} for TUI settings",
   "Place TUI settings in {highlight}~/.config/opencode/tui.json{/highlight} for global config",
   "Add {highlight}$schema{/highlight} to your config for autocomplete in your editor",
   "Configure {highlight}model{/highlight} in config to set your default model",
   "Override any keybind in {highlight}tui.json{/highlight} via the {highlight}keybinds{/highlight} section",
   "Set any keybind to {highlight}none{/highlight} to disable it completely",
   "Configure local or remote MCP servers in the {highlight}mcp{/highlight} config section",
-  "OpenCode auto-handles OAuth for remote MCP servers requiring auth",
-  "Add {highlight}.md{/highlight} files to {highlight}.opencode/command/{/highlight} to define reusable custom prompts",
+  "Soma Code auto-handles OAuth for remote MCP servers requiring auth",
+  "Add {highlight}.md{/highlight} files to {highlight}.somacode/command/{/highlight} to define reusable custom prompts",
   "Use {highlight}$ARGUMENTS{/highlight}, {highlight}$1{/highlight}, {highlight}$2{/highlight} in custom commands for dynamic input",
   "Use backticks in commands to inject shell output (e.g., {highlight}`git status`{/highlight})",
-  "Add {highlight}.md{/highlight} files to {highlight}.opencode/agent/{/highlight} for specialized AI personas",
+  "Add {highlight}.md{/highlight} files to {highlight}.somacode/agent/{/highlight} for specialized AI personas",
   "Configure per-agent permissions for {highlight}edit{/highlight}, {highlight}bash{/highlight}, and {highlight}webfetch{/highlight} tools",
   'Use patterns like {highlight}"git *": "allow"{/highlight} for granular bash permissions',
   'Set {highlight}"rm -rf *": "deny"{/highlight} to block destructive commands',
   'Configure {highlight}"git push": "ask"{/highlight} to require approval before pushing',
-  "OpenCode auto-formats files using prettier, gofmt, ruff, and more",
+  "Soma Code auto-formats files using prettier, gofmt, ruff, and more",
   'Set {highlight}"formatter": false{/highlight} in config to disable all auto-formatting',
   "Define custom formatter commands with file extensions in config",
-  "OpenCode uses LSP servers for intelligent code analysis",
-  "Create {highlight}.ts{/highlight} files in {highlight}.opencode/tools/{/highlight} to define new LLM tools",
+  "Soma Code uses LSP servers for intelligent code analysis",
+  "Create {highlight}.ts{/highlight} files in {highlight}.somacode/tools/{/highlight} to define new LLM tools",
   "Tool definitions can invoke scripts written in Python, Go, etc",
-  "Add {highlight}.ts{/highlight} files to {highlight}.opencode/plugin/{/highlight} for event hooks",
+  "Add {highlight}.ts{/highlight} files to {highlight}.somacode/plugin/{/highlight} for event hooks",
   "Use plugins to send OS notifications when sessions complete",
-  "Create a plugin to prevent OpenCode from reading sensitive files",
+  "Create a plugin to prevent Soma Code from reading sensitive files",
   "Use {highlight}opencode run{/highlight} for non-interactive scripting",
   "Use {highlight}opencode --continue{/highlight} to resume the last session",
   "Use {highlight}opencode run -f file.ts{/highlight} to attach files via CLI",
   "Use {highlight}--format json{/highlight} for machine-readable output in scripts",
-  "Run {highlight}opencode serve{/highlight} for headless API access to OpenCode",
+  "Run {highlight}somacode serve{/highlight} for headless API access to Soma Code",
   "Use {highlight}opencode run --attach{/highlight} to connect to a running server",
   "Run {highlight}opencode upgrade{/highlight} to update to the latest version",
   "Run {highlight}opencode auth list{/highlight} to see all configured providers",
@@ -122,7 +154,7 @@ const TIPS = [
   "Comment {highlight}/opencode fix this{/highlight} on issues to auto-create PRs",
   "Comment {highlight}/oc{/highlight} on PR code lines for targeted code reviews",
   'Use {highlight}"theme": "system"{/highlight} to match your terminal\'s colors',
-  "Create JSON theme files in {highlight}.opencode/themes/{/highlight} directory",
+  "Create JSON theme files in {highlight}.somacode/themes/{/highlight} directory",
   "Themes support dark/light variants for both modes",
   "Reference ANSI colors 0-255 in custom themes",
   "Use {highlight}{env:VAR_NAME}{/highlight} syntax to reference environment variables in config",
@@ -146,7 +178,7 @@ const TIPS = [
   "Enable {highlight}scroll_acceleration{/highlight} in {highlight}tui.json{/highlight} for smooth macOS-style scrolling",
   "Toggle username display in chat via command palette ({highlight}Ctrl+P{/highlight})",
   "Run {highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} for containerized use",
-  "Use {highlight}/connect{/highlight} with OpenCode Zen for curated, tested models",
+  "Use {highlight}/connect{/highlight} with Soma Code Zen for curated, tested models",
   "Commit your project's {highlight}AGENTS.md{/highlight} file to Git for team sharing",
   "Use {highlight}/review{/highlight} to review uncommitted changes, branches, or PRs",
   "Run {highlight}/help{/highlight} or {highlight}Ctrl+X H{/highlight} to show the help dialog",
