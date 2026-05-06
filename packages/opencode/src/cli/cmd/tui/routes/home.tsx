@@ -75,6 +75,7 @@ export function Home() {
               workspaceID={project.workspace.current()}
               right={<TuiPluginRuntime.Slot name="home_prompt_right" workspace_id={project.workspace.current()} />}
               placeholders={placeholder}
+              pointsBalance={0}
             />
           </TuiPluginRuntime.Slot>
         </box>

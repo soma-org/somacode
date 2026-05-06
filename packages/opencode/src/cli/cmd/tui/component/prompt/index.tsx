@@ -54,6 +54,8 @@ export type PromptProps = {
   ref?: (ref: PromptRef | undefined) => void
   hint?: JSX.Element
   right?: JSX.Element
+  /** When set, shown on the idle status row opposite agents/commands keybinds (e.g. home balance). */
+  pointsBalance?: number
   showPlaceholder?: boolean
   placeholders?: {
     normal?: string[]
@@ -1351,7 +1353,17 @@ export function Prompt(props: PromptProps) {
           />
         </box>
         <box width="100%" flexDirection="row" justifyContent="space-between">
-          <Show when={status().type !== "idle"} fallback={props.hint ?? <text />}>
+          <Show
+            when={status().type !== "idle"}
+            fallback={
+              <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
+                <Show when={props.pointsBalance !== undefined}>
+                  <text fg={theme.textMuted}>points : {props.pointsBalance}</text>
+                </Show>
+                {props.hint ?? <text />}
+              </box>
+            }
+          >
             <box
               flexDirection="row"
               gap={1}
