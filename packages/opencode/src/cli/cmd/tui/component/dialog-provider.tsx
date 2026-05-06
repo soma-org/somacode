@@ -1,6 +1,6 @@
 import { createMemo, createSignal, onMount, Show } from "solid-js"
 import { useSync } from "@tui/context/sync"
-import { map, pipe, sortBy } from "remeda"
+import { filter, map, pipe, sortBy } from "remeda"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { useDialog } from "@tui/ui/dialog"
 import { useSDK } from "../context/sdk"
@@ -16,13 +16,11 @@ import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "@tui/util/provider-origin"
 import { useConnected } from "./use-connected"
 
+/** Only provider offered in the TUI “Connect a provider” modal (matches desktop app default). */
+const CONNECT_PROVIDER_ID = "openrouter" as const
+
 const PROVIDER_PRIORITY: Record<string, number> = {
-  opencode: 0,
-  "opencode-go": 1,
-  openai: 2,
-  "github-copilot": 3,
-  anthropic: 4,
-  google: 5,
+  [CONNECT_PROVIDER_ID]: 0,
 }
 
 export function createDialogProviderOptions() {
@@ -35,6 +33,7 @@ export function createDialogProviderOptions() {
   const options = createMemo(() => {
     return pipe(
       sync.data.provider_next.all,
+      filter((x) => x.id === CONNECT_PROVIDER_ID),
       sortBy((x) => PROVIDER_PRIORITY[x.id] ?? 99),
       map((provider) => {
         const consoleManaged = isConsoleManagedProvider(sync.data.console_state.consoleManagedProviders, provider.id)
@@ -44,13 +43,9 @@ export function createDialogProviderOptions() {
           title: provider.name,
           value: provider.id,
           description: {
-            opencode: "(Recommended)",
-            anthropic: "(API key)",
-            openai: "(ChatGPT Plus/Pro or API key)",
-            "opencode-go": "Low cost subscription for everyone",
+            openrouter: "(API key)",
           }[provider.id],
           footer: consoleManaged ? sync.data.console_state.activeOrgName : undefined,
-          category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Other",
           gutter: connected && onboarded() ? () => <text fg={theme.success}>✓</text> : undefined,
           async onSelect() {
             if (consoleManaged) return
@@ -146,8 +141,7 @@ export function createDialogProviderOptions() {
 }
 
 export function DialogProvider() {
-  const options = createDialogProviderOptions()
-  return <DialogSelect title="Connect a provider" options={options()} />
+  return <ApiMethod providerID={CONNECT_PROVIDER_ID} title="OpenRouter" />
 }
 
 interface AutoMethodProps {
@@ -289,6 +283,15 @@ function ApiMethod(props: ApiMethodProps) {
               <text fg={theme.text}>
                 Go to <span style={{ fg: theme.primary }}>https://opencode.ai/zen</span> and enable OpenCode Go
               </text>
+            </box>
+          ),
+          openrouter: (
+            <box gap={1}>
+              <text fg={theme.textMuted}>Paste your OpenRouter API key to use models routed through OpenRouter.</text>
+              <box flexDirection="row" gap={1}>
+                <text fg={theme.text}>Keys:</text>
+                <Link href="https://openrouter.ai/settings/keys" fg={theme.primary} />
+              </box>
             </box>
           ),
         }[props.providerID] ?? undefined
