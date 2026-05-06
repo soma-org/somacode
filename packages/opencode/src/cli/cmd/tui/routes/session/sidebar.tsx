@@ -1,5 +1,6 @@
 import { useProject } from "@tui/context/project"
 import { useSync } from "@tui/context/sync"
+import { useKV } from "@tui/context/kv"
 import { createMemo, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useTuiConfig } from "../../context/tui-config"
@@ -11,9 +12,15 @@ import { getScrollAcceleration } from "../../util/scroll"
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const project = useProject()
   const sync = useSync()
+  const kv = useKV()
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
   const session = createMemo(() => sync.session.get(props.sessionID))
+  const pointsBalance = createMemo(() => {
+    if (!kv.ready) return 0
+    const v = kv.get("points_balance", 0)
+    return typeof v === "number" && !Number.isNaN(v) ? v : 0
+  })
   const workspaceStatus = () => {
     const workspaceID = session()?.workspaceID
     if (!workspaceID) return "error"
@@ -76,6 +83,12 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </Show>
               </box>
             </TuiPluginRuntime.Slot>
+            <box paddingRight={1}>
+              <text fg={theme.text}>
+                <b>Points</b>
+              </text>
+              <text fg={theme.textMuted}>{pointsBalance().toLocaleString()} points</text>
+            </box>
             <TuiPluginRuntime.Slot name="sidebar_content" session_id={props.sessionID} />
           </box>
         </scrollbox>
