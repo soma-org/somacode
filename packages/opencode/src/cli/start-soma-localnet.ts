@@ -4,15 +4,22 @@ import * as Log from "@somacode-ai/core/util/log"
 /**
  * Spawns `soma start localnet --force-regenesis` once per CLI process so embedded
  * provider stack is up before Somacode runs (see {@link shouldStartSomaLocalnet}).
+ *
+ * Uses `stdio: "ignore"`, `detached`, and no shell by default so nothing is printed
+ * to the parent terminal and Windows does not open an extra `cmd.exe` window when
+ * `soma` is a real `.exe` on `PATH`. If spawn fails with `ENOENT` on Windows because
+ * only `soma.cmd` exists, set `SOMACODE_SOMA_LOCALNET_SHELL=1` to fall back to `shell: true`.
  */
 export function startSomaLocalnet(): void {
   if (!shouldStartSomaLocalnet()) return
 
-  const child = spawn("soma", ["start", "localnet", "--force-regenesis"], {
+  const args = ["start", "localnet", "--force-regenesis"] as const
+  const useShell = process.env.SOMACODE_SOMA_LOCALNET_SHELL === "1"
+  const child = spawn("soma", [...args], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
-    shell: process.platform === "win32",
+    shell: useShell,
   })
 
   child.on("error", (err) => {
