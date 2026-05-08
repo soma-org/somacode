@@ -1,8 +1,7 @@
 import { createMemo, For } from "solid-js"
-import { DEFAULT_THEMES, useTheme } from "@tui/context/theme"
+import { useTheme } from "@tui/context/theme"
 
-const themeCount = Object.keys(DEFAULT_THEMES).length
-const themeTip = `Use {highlight}/themes{/highlight} or {highlight}Ctrl+X T{/highlight} to switch between ${themeCount} built-in themes`
+const themeTip = `Use {highlight}/themes{/highlight} or {highlight}Ctrl+X T{/highlight}; bundled palette is {highlight}monochrome{/highlight} (drop JSON under {highlight}.somacode/themes/{/highlight} for more)`
 
 type TipPart = { text: string; highlight: boolean }
 
