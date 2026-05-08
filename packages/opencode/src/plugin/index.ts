@@ -144,18 +144,7 @@ export const layer = Layer.effect(
           $: typeof Bun === "undefined" ? undefined : Bun.$,
         }
 
-        const optionalPoePlugin = yield* Effect.tryPromise({
-          try: async () => {
-            const mod = await import("opencode-poe-auth")
-            return mod.PoeAuthPlugin
-          },
-          catch: (err) => {
-            log.warn("failed to load optional plugin", { name: "PoeAuthPlugin", error: err })
-          },
-        }).pipe(Effect.option)
-        const internalPlugins =
-          optionalPoePlugin._tag === "Some" ? [...INTERNAL_PLUGINS, optionalPoePlugin.value] : INTERNAL_PLUGINS
-        for (const plugin of internalPlugins) {
+        for (const plugin of INTERNAL_PLUGINS) {
           log.info("loading internal plugin", { name: plugin.name })
           const init = yield* Effect.tryPromise({
             try: () => plugin(input),
