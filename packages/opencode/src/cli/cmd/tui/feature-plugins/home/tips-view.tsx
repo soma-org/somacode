@@ -1,7 +1,7 @@
 import { createMemo, For } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 
-const themeTip = `Use {highlight}/themes{/highlight} or {highlight}Ctrl+X T{/highlight}; bundled palette is {highlight}monochrome{/highlight} (drop JSON under {highlight}.somacode/themes/{/highlight} for more)`
+const themeTip = `Bundled palette is {highlight}monochrome{/highlight}; set {highlight}theme{/highlight} in {highlight}tui.json{/highlight} or add JSON under {highlight}.somacode/themes/{/highlight}. Use {highlight}Ctrl+P{/highlight} for light/dark mode`
 
 type TipPart = { text: string; highlight: boolean }
 
