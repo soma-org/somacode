@@ -27,7 +27,7 @@ import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import * as Editor from "@tui/util/editor"
 import { useExit } from "../../context/exit"
 import * as Clipboard from "../../util/clipboard"
-import type { AssistantMessage, FilePart, UserMessage } from "@opencode-ai/sdk/v2"
+import type { AssistantMessage, FilePart, UserMessage } from "@somacode-ai/sdk/v2"
 import { TuiEvent } from "../../event"
 import { iife } from "@/util/iife"
 import { Locale } from "@/util/locale"
@@ -56,6 +56,8 @@ export type PromptProps = {
   right?: JSX.Element
   /** When set, shown on the idle status row opposite agents/commands keybinds (e.g. home balance). */
   pointsBalance?: number
+  /** Shown next to points on the idle row when `pointsBalance` is set; defaults to `0`. */
+  usdcBalance?: number
   showPlaceholder?: boolean
   placeholders?: {
     normal?: string[]
@@ -1358,7 +1360,10 @@ export function Prompt(props: PromptProps) {
             fallback={
               <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
                 <Show when={props.pointsBalance !== undefined}>
-                  <text fg={theme.textMuted}>points : {props.pointsBalance}</text>
+                  <box flexDirection="row" flexShrink={0} gap={2} alignItems="center">
+                    <text fg={theme.textMuted}>{props.pointsBalance!.toLocaleString()} points</text>
+                    <text fg={theme.textMuted}>{(props.usdcBalance ?? 0).toLocaleString()} USDC</text>
+                  </box>
                 </Show>
                 {props.hint ?? <text />}
               </box>

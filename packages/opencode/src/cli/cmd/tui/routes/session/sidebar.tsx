@@ -4,7 +4,7 @@ import { useKV } from "@tui/context/kv"
 import { createMemo, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useTuiConfig } from "../../context/tui-config"
-import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
+import { InstallationChannel, InstallationVersion } from "@somacode-ai/core/installation/version"
 import { TuiPluginRuntime } from "@/cli/cmd/tui/plugin/runtime"
 
 import { getScrollAcceleration } from "../../util/scroll"
@@ -19,6 +19,11 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const pointsBalance = createMemo(() => {
     if (!kv.ready) return 0
     const v = kv.get("points_balance", 0)
+    return typeof v === "number" && !Number.isNaN(v) ? v : 0
+  })
+  const usdcBalance = createMemo(() => {
+    if (!kv.ready) return 0
+    const v = kv.get("usdc_balance", 0)
     return typeof v === "number" && !Number.isNaN(v) ? v : 0
   })
   const workspaceStatus = () => {
@@ -83,11 +88,12 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </Show>
               </box>
             </TuiPluginRuntime.Slot>
-            <box paddingRight={1}>
+            <box paddingRight={1} flexDirection="column" gap={0}>
               <text fg={theme.text}>
-                <b>Points</b>
+                <b>Balance</b>
               </text>
               <text fg={theme.textMuted}>{pointsBalance().toLocaleString()} points</text>
+              <text fg={theme.textMuted}>{usdcBalance().toLocaleString()} USDC</text>
             </box>
             <TuiPluginRuntime.Slot name="sidebar_content" session_id={props.sessionID} />
           </box>
