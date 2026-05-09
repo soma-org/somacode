@@ -1,4 +1,4 @@
-import { createSimpleContext } from "@opencode-ai/ui/context"
+import { createSimpleContext } from "@somacode-ai/ui/context"
 import { makePersisted } from "@solid-primitives/storage"
 import { createSignal } from "solid-js"
 
@@ -10,9 +10,15 @@ export const { use: usePoints, provider: PointsProvider } = createSimpleContext(
       name: "opencode.points.balance",
       storage,
     })
+    const [usdcBalance, setUsdcBalance] = makePersisted(createSignal(0), {
+      name: "opencode.usdc.balance",
+      storage,
+    })
     return {
       balance,
       setBalance,
+      usdcBalance,
+      setUsdcBalance,
     }
   },
 })

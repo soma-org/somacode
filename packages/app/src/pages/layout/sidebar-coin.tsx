@@ -1,38 +1,31 @@
-import { Popover } from "@opencode-ai/ui/popover"
-import { Icon } from "@opencode-ai/ui/icon"
+import { Icon } from "@somacode-ai/ui/icon"
+import { useDialog } from "@somacode-ai/ui/context/dialog"
 import { createMemo, type Component } from "solid-js"
+import { DialogSidebarBalance } from "@/components/dialog-sidebar-balance"
 import { useLanguage } from "@/context/language"
 import { usePoints } from "@/context/points"
 
-export const SidebarCoinBalance: Component<{ mobile?: boolean }> = (props) => {
+export const SidebarCoinBalance: Component<{ mobile?: boolean }> = () => {
   const language = useLanguage()
   const points = usePoints()
+  const dialog = useDialog()
 
   const formatted = createMemo(() => new Intl.NumberFormat(language.intl()).format(points.balance()))
 
-  const placement = () => (props.mobile ? "bottom" : "right")
+  const openBalance = () => {
+    dialog.show(() => <DialogSidebarBalance />)
+  }
 
   return (
-    <Popover
-      placement={placement()}
-      gutter={8}
-      class="min-w-[200px] max-w-[260px]"
-      title={language.t("sidebar.points.popoverTitle")}
-      modal={false}
-      trigger={
-        <button
-          type="button"
-          data-component="sidebar-points-trigger"
-          class="flex flex-col items-center justify-center gap-0.5 w-10 min-h-11 py-1 rounded-md text-text-strong hover:bg-surface-base-hover outline-none focus-visible:shadow-xs-border-focus"
-          aria-label={language.t("sidebar.points.aria", { count: formatted() })}
-        >
-          <Icon name="coin" size="small" class="icon-strong-base shrink-0" />
-          <span class="text-11-medium tabular-nums leading-none max-w-full truncate px-0.5">{formatted()}</span>
-        </button>
-      }
+    <button
+      type="button"
+      data-component="sidebar-points-trigger"
+      class="flex flex-col items-center justify-center gap-0.5 w-10 min-h-11 py-1 rounded-md text-text-strong hover:bg-surface-base-hover outline-none focus-visible:shadow-xs-border-focus"
+      aria-label={language.t("sidebar.points.aria", { count: formatted() })}
+      onClick={openBalance}
     >
-      <div class="text-20-medium text-text-strong tabular-nums">{formatted()}</div>
-      <p class="text-14-regular text-text-weak mt-2 leading-normal">{language.t("sidebar.points.popoverBody")}</p>
-    </Popover>
+      <Icon name="coin" size="small" class="icon-strong-base shrink-0" />
+      <span class="text-11-medium tabular-nums leading-none max-w-full truncate px-0.5">{formatted()}</span>
+    </button>
   )
 }
