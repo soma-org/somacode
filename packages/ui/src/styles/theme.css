@@ -90,11 +90,11 @@
   color-scheme: light;
   --text-mix-blend-mode: multiply;
 
-  /* OC-2 fallback variables (light) */
-  --background-base: #f8f8f8;
-  --background-weak: #f3f3f3;
-  --background-strong: #fcfcfc;
-  --background-stronger: #fcfcfc;
+  /* OC-2 fallback variables (light) — editorial warm off-white */
+  --background-base: #f5f2f0;
+  --background-weak: #efeae6;
+  --background-strong: #faf7f4;
+  --background-stronger: #faf7f4;
   --surface-base: rgba(0, 0, 0, 0.031);
   --base: rgba(0, 0, 0, 0.034);
   --surface-base-hover: rgba(0, 0, 0, 0.059);
@@ -350,11 +350,11 @@
     color-scheme: dark;
     --text-mix-blend-mode: plus-lighter;
 
-    /* OC-2 fallback variables (dark) */
-    --background-base: #101010;
-    --background-weak: #1e1e1e;
-    --background-strong: #121212;
-    --background-stronger: #151515;
+    /* OC-2 fallback variables (dark) — editorial charcoal + cream ink */
+    --background-base: #0a0a0a;
+    --background-weak: #121211;
+    --background-strong: #10100f;
+    --background-stronger: #161615;
     --surface-base: rgba(255, 255, 255, 0.031);
     --base: rgba(255, 255, 255, 0.034);
     --surface-base-hover: rgba(255, 255, 255, 0.039);
