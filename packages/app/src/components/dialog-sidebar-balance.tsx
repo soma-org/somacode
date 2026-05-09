@@ -39,14 +39,14 @@ export const DialogSidebarBalance: Component = () => {
 
   return (
     <Dialog size="large" transition title={language.t("sidebar.points.dialogTitle")}>
-      <div class="flex flex-col gap-8 px-1 pb-1 pt-2">
+      <div class="flex flex-col gap-8 px-5 pb-6 pt-4 sm:px-8 sm:pb-8">
         <div class="flex flex-col gap-2">
           <div class="text-12-medium uppercase tracking-wide text-text-weak">
             {language.t("sidebar.points.sectionPoints")}
           </div>
           <div class="text-[32px] font-medium text-text-strong tabular-nums leading-none">{formattedPoints()}</div>
         </div>
-        <div class="flex flex-col gap-4 rounded-xl border border-border-weak-base bg-surface-base p-5">
+        <div class="flex flex-col gap-4 rounded-xl border border-border-weak-base bg-surface-base p-6">
           <div class="flex flex-col gap-2">
             <div class="text-12-medium uppercase tracking-wide text-text-weak">
               {language.t("sidebar.points.sectionUsdc")}
