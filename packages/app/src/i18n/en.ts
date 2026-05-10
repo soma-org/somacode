@@ -678,7 +678,7 @@ export const dict = {
   "sidebar.points.dialogTitle": "Balance",
   "sidebar.points.sectionPoints": "Points",
   "sidebar.points.sectionUsdc": "USDC",
-  "sidebar.points.addUsdc": "Add USDC",
+  "sidebar.points.buyUsdc": "Buy USDC",
   "sidebar.points.checkoutMissingTitle": "Checkout not configured",
   "sidebar.points.checkoutMissingDescription":
     "Set the environment variable VITE_USDC_CHECKOUT_URL to your Stripe Checkout or billing page URL.",
