@@ -1,5 +1,5 @@
-import { Icon } from "@somacode-ai/ui/icon"
-import { useDialog } from "@somacode-ai/ui/context/dialog"
+import { Icon } from "@opencode-ai/ui/icon"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { createMemo, type Component } from "solid-js"
 import { DialogSidebarBalance } from "@/components/dialog-sidebar-balance"
 import { useLanguage } from "@/context/language"

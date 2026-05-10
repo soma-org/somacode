@@ -1,6 +1,6 @@
 import z from "zod"
 import { EOL } from "os"
-import { NamedError } from "@somacode-ai/core/util/error"
+import { NamedError } from "@opencode-ai/core/util/error"
 import { logo as glyphs, wordmark } from "./logo"
 
 export const CancelledError = NamedError.create("UICancelledError", z.void())

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import * as Log from "@somacode-ai/core/util/log"
+import * as Log from "@opencode-ai/core/util/log"
 
 /**
  * Spawns `soma start localnet --force-regenesis` once per CLI process so embedded

@@ -1,4 +1,4 @@
-import { createSimpleContext } from "@somacode-ai/ui/context"
+import { createSimpleContext } from "@opencode-ai/ui/context"
 import { makePersisted } from "@solid-primitives/storage"
 import { createSignal } from "solid-js"
 

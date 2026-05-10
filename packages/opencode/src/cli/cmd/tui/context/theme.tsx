@@ -2,16 +2,16 @@ import { CliRenderEvents, SyntaxStyle, RGBA, type TerminalColors } from "@opentu
 import path from "path"
 import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "./helper"
-import { Glob } from "@somacode-ai/core/util/glob"
+import { Glob } from "@opencode-ai/core/util/glob"
 import monochrome from "./theme/monochrome.json" with { type: "json" }
 import { useKV } from "./kv"
 import { useRenderer } from "@opentui/solid"
 import { createStore, produce } from "solid-js/store"
-import { Global } from "@somacode-ai/core/global"
+import { Global } from "@opencode-ai/core/global"
 import { Filesystem } from "@/util/filesystem"
 import { useTuiConfig } from "./tui-config"
 import { isRecord } from "@/util/record"
-import type { TuiThemeCurrent } from "@somacode-ai/plugin/tui"
+import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui"
 
 type Theme = TuiThemeCurrent & {
   _hasSelectedListItemText: boolean

@@ -1,4 +1,4 @@
-import type { TuiPlugin, TuiPluginModule } from "@somacode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { shouldStartSomaLocalnet } from "../../../../start-soma-localnet"
 import { waitForSomacodeLocalnetReady } from "../../../../soma-embedded-provider"
