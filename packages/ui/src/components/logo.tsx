@@ -6,14 +6,14 @@ export const Mark = (props: { class?: string }) => {
       data-component="logo-mark"
       classList={{ [props.class ?? ""]: !!props.class }}
       xmlns="http://www.w3.org/2000/svg"
-      width="100"
-      height="100"
-      viewBox="0 0 80 100"
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
     >
       <g>
         <text
           font-family="Oswald Regular, Oswald, system-ui, sans-serif"
-          font-size="80"
+          font-size="28"
           font-style="normal"
           font-weight="normal"
           fill="var(--icon-strong-base)"
@@ -21,10 +21,10 @@ export const Mark = (props: { class?: string }) => {
           paint-order="stroke"
           text-anchor="middle"
           dominant-baseline="central"
-          x="50"
-          y="50"
+          x="10"
+          y="8"
         >
-         ❍
+          ❍
         </text>
       </g>
     </svg>
