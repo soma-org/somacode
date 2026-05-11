@@ -681,9 +681,17 @@ export const dict = {
   "sidebar.points.buyUsdc": "Buy USDC",
   "sidebar.points.checkoutMissingTitle": "Checkout not configured",
   "sidebar.points.checkoutMissingDescription":
-    "Set the environment variable VITE_USDC_CHECKOUT_URL to your Stripe Checkout or billing page URL.",
+    "Set VITE_USDC_CHECKOUT_URL to your POST endpoint (e.g. Stripe onramp URL). The JSON response must include a non-empty \"redirect_url\" string.",
+  "sidebar.points.checkoutMissingStripeKeyDescription":
+    "Set VITE_STRIPE_TEST_KEY to your Stripe secret key (sk_test_… or sk_live_…). Prefer a server proxy so the secret is not in the client bundle.",
+  "sidebar.points.checkoutSessionFailedTitle": "Could not start checkout",
+  "sidebar.points.checkoutSessionFailedDescription":
+    "The POST to VITE_USDC_CHECKOUT_URL failed. Check your server and credentials.",
+  "sidebar.points.checkoutSessionInvalidTitle": "Invalid checkout response",
+  "sidebar.points.checkoutSessionInvalidDescription":
+    "Expected JSON with a non-empty \"redirect_url\" string.",
   "sidebar.points.dialogBody":
-    "Points and USDC totals shown here are stored on this device until you connect a billing API. Add USDC opens your Stripe checkout link in the browser.",
+    "Points and USDC totals shown here are stored on this device until you connect a billing API. Buy USDC POSTs to VITE_USDC_CHECKOUT_URL with Stripe Bearer auth, then opens redirect_url in the browser.",
   "sidebar.help": "Help",
   "sidebar.workspaces.enable": "Enable workspaces",
   "sidebar.workspaces.disable": "Disable workspaces",

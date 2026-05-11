@@ -6,16 +6,19 @@ import { createMemo, type Component } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { usePoints } from "@/context/points"
-
-const checkoutUrl = () => (import.meta.env.VITE_USDC_CHECKOUT_URL ?? "").trim()
+import { useStripe } from "@/hooks/use-stripe"
 
 export const DialogSidebarBalance: Component = () => {
   const language = useLanguage()
   const platform = usePlatform()
   const points = usePoints()
   const dialog = useDialog()
+  const { checkoutPending, buyUsdc } = useStripe()
 
-  const formattedPoints = createMemo(() => new Intl.NumberFormat(language.intl()).format(points.balance()))
+  const formattedPoints = createMemo(() =>
+    new Intl.NumberFormat(language.intl()).format(points.balance()),
+  )
+
   const formattedUsdc = createMemo(() =>
     new Intl.NumberFormat(language.intl(), {
       minimumFractionDigits: 2,
@@ -23,17 +26,42 @@ export const DialogSidebarBalance: Component = () => {
     }).format(points.usdcBalance()),
   )
 
-  const addUsdc = () => {
-    const url = checkoutUrl()
-    if (!url) {
+  const onBuyUsdc = async () => {
+    const result = await buyUsdc()
+    if (!result.ok) {
+      if (result.reason === "missing_checkout_url") {
+        showToast({
+          variant: "default",
+          title: language.t("sidebar.points.checkoutMissingTitle"),
+          description: language.t("sidebar.points.checkoutMissingDescription"),
+        })
+        return
+      }
+      if (result.reason === "missing_stripe_key") {
+        showToast({
+          variant: "default",
+          title: language.t("sidebar.points.checkoutMissingTitle"),
+          description: language.t("sidebar.points.checkoutMissingStripeKeyDescription"),
+        })
+        return
+      }
+      if (result.reason === "invalid_response") {
+        showToast({
+          variant: "error",
+          title: language.t("sidebar.points.checkoutSessionInvalidTitle"),
+          description: language.t("sidebar.points.checkoutSessionInvalidDescription"),
+        })
+        return
+      }
       showToast({
-        variant: "warning",
-        title: language.t("sidebar.points.checkoutMissingTitle"),
-        description: language.t("sidebar.points.checkoutMissingDescription"),
+        variant: "error",
+        title: language.t("sidebar.points.checkoutSessionFailedTitle"),
+        description: language.t("sidebar.points.checkoutSessionFailedDescription"),
       })
       return
     }
-    platform.openLink(url)
+
+    platform.openLink(result.redirectUrl)
     dialog.close()
   }
 
@@ -47,7 +75,12 @@ export const DialogSidebarBalance: Component = () => {
             </div>
             <div class="flex items-center text-[32px] font-medium text-text-strong tabular-nums leading-none">
               {formattedUsdc()}
-              <Button size="large" class="self-start ml-10" onClick={addUsdc}>
+              <Button
+                size="large"
+                class="self-start ml-10"
+                disabled={checkoutPending()}
+                onClick={onBuyUsdc}
+              >
                 {language.t("sidebar.points.buyUsdc")}
               </Button>
             </div>
@@ -56,10 +89,14 @@ export const DialogSidebarBalance: Component = () => {
             <div class="text-12-medium uppercase tracking-wide text-text-weak">
               {language.t("sidebar.points.sectionPoints")}
             </div>
-            <div class="text-[32px] font-medium text-text-strong tabular-nums leading-none">{formattedPoints()}</div>
+            <div class="text-[32px] font-medium text-text-strong tabular-nums leading-none">
+              {formattedPoints()}
+            </div>
           </div>
         </div>
-        <p class="text-14-regular text-text-weak leading-normal">{language.t("sidebar.points.dialogBody")}</p>
+        <p class="text-14-regular text-text-weak leading-normal">
+          {language.t("sidebar.points.dialogBody")}
+        </p>
       </div>
     </Dialog>
   )
