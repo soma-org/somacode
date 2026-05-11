@@ -691,7 +691,7 @@ export const dict = {
   "sidebar.points.checkoutSessionInvalidDescription":
     "Expected JSON with a non-empty \"redirect_url\" string.",
   "sidebar.points.dialogBody":
-    "Points and USDC totals shown here are stored on this device until you connect a billing API. Buy USDC POSTs to VITE_USDC_CHECKOUT_URL with Stripe Bearer auth, then opens redirect_url in the browser.",
+    "Your points and USDC balance are stored on this device until you connect a billing account. You can buy USDC securely through Stripe, which will open a checkout page in your browser.",
   "sidebar.help": "Help",
   "sidebar.workspaces.enable": "Enable workspaces",
   "sidebar.workspaces.disable": "Disable workspaces",
@@ -757,8 +757,6 @@ export const dict = {
   "settings.general.row.appearance.description": "Customise how Soma Code looks on your device",
   "settings.general.row.colorScheme.title": "Color scheme",
   "settings.general.row.colorScheme.description": "Choose whether Soma Code follows the system, light, or dark theme",
-  "settings.general.row.theme.title": "Theme",
-  "settings.general.row.theme.description": "Customise how Soma Code is themed.",
   "settings.general.row.font.title": "Code Font",
   "settings.general.row.font.description": "Customise the font used in code blocks",
   "settings.general.row.terminalFont.title": "Terminal Font",

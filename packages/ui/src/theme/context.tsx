@@ -78,6 +78,7 @@ const names: Record<string, string> = {
   vercel: "Vercel",
   vesper: "Vesper",
   zenburn: "Zenburn",
+  somacode: "Soma Code",
 }
 const oc2Theme = oc2ThemeJson as DesktopTheme
 

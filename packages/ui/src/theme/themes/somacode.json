@@ -1,7 +1,7 @@
 {
   "$schema": "https://somacode.ai/desktop-theme.json",
   "name": "Soma Code",
-  "id": "opencode",
+  "id": "somacode",
   "light": {
     "palette": {
       "neutral": "#f5f2f0",

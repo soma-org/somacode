@@ -1,4 +1,4 @@
-import { Component, Show, createMemo, createResource, onMount, type JSX } from "solid-js"
+import { Component, Show, createMemo, createResource, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -28,18 +28,12 @@ import {
 } from "@/context/settings"
 import { decode64 } from "@/utils/base64"
 import { playSoundById, SOUND_OPTIONS } from "@/utils/sound"
-import { Link } from "./link"
 import { SettingsList } from "./settings-list"
 
 let demoSoundState = {
   cleanup: undefined as (() => void) | undefined,
   timeout: undefined as NodeJS.Timeout | undefined,
   run: 0,
-}
-
-type ThemeOption = {
-  id: string
-  name: string
 }
 
 type ShellOption = {
@@ -173,8 +167,6 @@ export const SettingsGeneral: Component = () => {
       .finally(() => setStore("checking", false))
   }
 
-  const themeOptions = createMemo<ThemeOption[]>(() => theme.ids().map((id) => ({ id, name: theme.name(id) })))
-
   const globalSync = useGlobalSync()
   const globalSdk = useGlobalSDK()
 
@@ -192,10 +184,6 @@ export const SettingsGeneral: Component = () => {
     () => Promise.resolve(platform.getDisplayBackend?.() ?? null).catch(() => null as DisplayBackend | null),
     { initialValue: null as DisplayBackend | null },
   )
-
-  onMount(() => {
-    void theme.loadThemes()
-  })
 
   const autoOption = { id: "auto", value: "", label: language.t("settings.general.row.shell.autoDefault") }
   const currentShell = createMemo(() => globalSync.data.config.shell ?? "")
@@ -487,36 +475,6 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.theme.title")}
-          description={
-            <>
-              {language.t("settings.general.row.theme.description")}{" "}
-              <Link href="https://opencode.ai/docs/themes/">{language.t("common.learnMore")}</Link>
-            </>
-          }
-        >
-          <Select
-            data-action="settings-theme"
-            options={themeOptions()}
-            current={themeOptions().find((o) => o.id === theme.themeId())}
-            value={(o) => o.id}
-            label={(o) => o.name}
-            onSelect={(option) => {
-              if (!option) return
-              theme.setTheme(option.id)
-            }}
-            onHighlight={(option) => {
-              if (!option) return
-              theme.previewTheme(option.id)
-              return () => theme.cancelPreview()
-            }}
-            variant="secondary"
-            size="small"
-            triggerVariant="settings"
-          />
-        </SettingsRow>
-
-        <SettingsRow
           title={language.t("settings.general.row.uiFont.title")}
           description={language.t("settings.general.row.uiFont.description")}
         >
@@ -729,7 +687,6 @@ export const SettingsGeneral: Component = () => {
     </div>
   )
 
-  console.log(import.meta.env)
   return (
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">

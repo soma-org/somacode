@@ -7,7 +7,7 @@ import { MarkedProvider } from "@opencode-ai/ui/context/marked"
 import { File } from "@opencode-ai/ui/file"
 import { Font } from "@opencode-ai/ui/font"
 import { Splash } from "@opencode-ai/ui/logo"
-import { ThemeProvider } from "@opencode-ai/ui/theme/context"
+import { ThemeProvider, useTheme } from "@opencode-ai/ui/theme/context"
 import { MetaProvider } from "@solidjs/meta"
 import { type BaseRouterProps, Navigate, Route, Router } from "@solidjs/router"
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query"
@@ -22,6 +22,7 @@ import {
   type JSX,
   lazy,
   onCleanup,
+  onMount,
   type ParentProps,
   Show,
   Suspense,
@@ -68,6 +69,15 @@ const SessionIndexRoute = () => <Navigate href="session" />
 function UiI18nBridge(props: ParentProps) {
   const language = useLanguage()
   return <I18nProvider value={{ locale: language.intl, t: language.t }}>{props.children}</I18nProvider>
+}
+
+/** App uses a single embedded palette (`somacode`); ignore persisted theme id from older builds. */
+function EmbeddedMonochromeTheme() {
+  const theme = useTheme()
+  onMount(() => {
+    theme.setTheme("somacode")
+  })
+  return null
 }
 
 declare global {
@@ -146,10 +156,12 @@ export function AppBaseProviders(props: ParentProps<{ locale?: Locale }>) {
     <MetaProvider>
       <Font />
       <ThemeProvider
+        defaultTheme="somacode"
         onThemeApplied={(_, mode) => {
           void window.api?.setTitlebar?.({ mode })
         }}
       >
+        <EmbeddedMonochromeTheme />
         <LanguageProvider locale={props.locale}>
           <UiI18nBridge>
             <ErrorBoundary
