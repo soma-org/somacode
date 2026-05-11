@@ -1,12 +1,14 @@
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { InternalTuiPlugin } from "../../plugin/internal"
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { shouldStartSomaLocalnet } from "../../../../start-soma-localnet"
 import { waitForSomacodeLocalnetReady } from "../../../../soma-embedded-provider"
 import { Tips, type EmbeddedLocalnetTip } from "./tips-view"
+import { useBindings } from "../../keymap"
 
 const id = "internal:home-tips"
 
-function View(props: { show: boolean; connected: boolean }) {
+function View(props: { api: TuiPluginApi; hidden: boolean; show: boolean; connected: boolean }) {
   const [embeddedLocalnet, setEmbeddedLocalnet] = createSignal<EmbeddedLocalnetTip>("off")
 
   createEffect(() => {
@@ -32,6 +34,22 @@ function View(props: { show: boolean; connected: boolean }) {
     })
   })
 
+  useBindings(() => ({
+    commands: [
+      {
+        name: "tips.toggle",
+        title: props.hidden ? "Show tips" : "Hide tips",
+        category: "System",
+        namespace: "palette",
+        run() {
+          props.api.kv.set("tips_hidden", !props.api.kv.get("tips_hidden", false))
+          props.api.ui.dialog.clear()
+        },
+      },
+    ],
+    bindings: props.api.tuiConfig.keybinds.get("tips.toggle"),
+  }))
+
   return (
     <box
       height={4}
@@ -52,20 +70,6 @@ function View(props: { show: boolean; connected: boolean }) {
 }
 
 const tui: TuiPlugin = async (api) => {
-  api.command.register(() => [
-    {
-      title: api.kv.get("tips_hidden", false) ? "Show tips" : "Hide tips",
-      value: "tips.toggle",
-      keybind: "tips_toggle",
-      category: "System",
-      hidden: api.route.current.name !== "home",
-      onSelect() {
-        api.kv.set("tips_hidden", !api.kv.get("tips_hidden", false))
-        api.ui.dialog.clear()
-      },
-    },
-  ])
-
   api.slots.register({
     order: 100,
     slots: {
@@ -78,13 +82,13 @@ const tui: TuiPlugin = async (api) => {
           ),
         )
         const show = createMemo(() => (!first() || !connected()) && !hidden())
-        return <View show={show()} connected={connected()} />
+        return <View api={api} hidden={hidden()} show={show()} connected={connected()} />
       },
     },
   })
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+const plugin: InternalTuiPlugin = {
   id,
   tui,
 }
