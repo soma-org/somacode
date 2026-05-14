@@ -21,7 +21,6 @@ import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import semver from "semver"
 import { DialogProvider, useDialog } from "@tui/ui/dialog"
-import { DialogProvider as DialogProviderList } from "@tui/component/dialog-provider"
 import { ErrorComponent } from "@tui/component/error-component"
 import { PluginRouteMissing } from "@tui/component/plugin-route-missing"
 import { ProjectProvider } from "@tui/context/project"
@@ -56,7 +55,7 @@ import { TuiEvent } from "./event"
 import { KVProvider, useKV } from "./context/kv"
 import { Provider } from "@/provider/provider"
 import { fetchBalance } from "@opencode-ai/core/util/balance-query"
-import { fetchSupportedModels, modelKey } from "@opencode-ai/core/util/models-query"
+import { fetchSupportedModels } from "@opencode-ai/core/util/models-query"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -87,7 +86,6 @@ const appBindingCommands = [
   "agent.cycle.reverse",
   "variant.cycle",
   "variant.list",
-  "provider.connect",
   "console.org.switch",
   "opencode.status",
   "theme.switch",
@@ -365,7 +363,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     const modelsUrl = process.env.SOMACODE_MODELS_GRAPHQL_URL?.trim() || undefined
     void fetchSupportedModels({ url: modelsUrl }).then((result) => {
       if (!result.ok) return
-      kv.set("supported_models", result.models.map(modelKey))
+      kv.set("supported_models", result.models)
     })
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
@@ -426,17 +424,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       }
     })
   })
-
-  createEffect(
-    on(
-      () => sync.status === "complete" && sync.data.provider.length === 0,
-      (isEmpty, wasEmpty) => {
-        // only trigger when we transition into an empty-provider state
-        if (!isEmpty || wasEmpty) return
-        dialog.replace(() => <DialogProviderList />)
-      },
-    ),
-  )
 
   const connected = useConnected()
   const appCommands = createMemo(() =>
@@ -574,16 +561,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         run: () => {
           local.agent.move(-1)
         },
-      },
-      {
-        name: "provider.connect",
-        title: "Connect provider",
-        suggested: !connected(),
-        slashName: "connect",
-        run: () => {
-          dialog.replace(() => <DialogProviderList />)
-        },
-        category: "Provider",
       },
       ...(sync.data.console_state.switchableOrgCount > 1
         ? [

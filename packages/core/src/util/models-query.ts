@@ -34,7 +34,6 @@ const MOCK_RESPONSE: { data: { supportedModels: SupportedModel[] } } = {
       { providerID: "openai", modelID: "gpt-5-mini", name: "GPT-5 Mini" },
       { providerID: "google", modelID: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
       { providerID: "google", modelID: "gemini-2.5-flash", name: "Gemini 2.5 Flash", free: true },
-      { providerID: "openrouter", modelID: "x-ai/grok-4", name: "Grok 4" },
     ],
   },
 }

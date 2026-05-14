@@ -5,6 +5,7 @@ import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } fro
 import { makePersisted } from "@solid-primitives/storage"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { fetchSupportedModels, modelKey as supportedModelKey } from "@opencode-ai/core/util/models-query"
+import type { SupportedModel } from "@opencode-ai/core/util/models-query"
 import { useProviders } from "@/hooks/use-providers"
 import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
@@ -43,28 +44,48 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     )
 
     const storage = typeof globalThis.localStorage !== "undefined" ? globalThis.localStorage : undefined
-    const [supportedKeys, setSupportedKeys] = makePersisted(createSignal<string[]>([]), {
-      name: "opencode.supported-models.keys",
+    const [supportedList, setSupportedList] = makePersisted(createSignal<SupportedModel[]>([]), {
+      name: "opencode.supported-models.list",
       storage,
     })
-    const supportedSet = createMemo(() => new Set(supportedKeys()))
     onMount(() => {
       void fetchSupportedModels({ url: SUPPORTED_MODELS_URL, fetch: platform.fetch ?? fetch }).then((result) => {
         if (!result.ok) return
-        setSupportedKeys(result.models.map(supportedModelKey))
+        setSupportedList(result.models)
       })
     })
 
-    const available = createMemo(() =>
-      providers.connected().flatMap((p) =>
-        Object.values(p.models)
-          .filter((m) => supportedSet().has(supportedModelKey({ providerID: p.id, modelID: m.id })))
-          .map((m) => ({
-            ...m,
-            provider: p,
-          })),
-      ),
-    )
+    const providerName = (id: string) => providers.all().find((p) => p.id === id)?.name ?? id
+    const available = createMemo(() => {
+      const localByKey = new Map<string, ReturnType<typeof providers.connected>[number]["models"][string]>()
+      const providerByKey = new Map<string, ReturnType<typeof providers.connected>[number]>()
+      for (const p of providers.connected()) {
+        for (const m of Object.values(p.models)) {
+          const key = supportedModelKey({ providerID: p.id, modelID: m.id })
+          localByKey.set(key, m)
+          providerByKey.set(key, p)
+        }
+      }
+      const today = new Date().toISOString().slice(0, 10)
+      return supportedList().map((entry) => {
+        const key = supportedModelKey(entry)
+        const local = localByKey.get(key)
+        const localProvider = providerByKey.get(key)
+        if (local && localProvider) {
+          return { ...local, name: entry.name, provider: localProvider }
+        }
+        return {
+          id: entry.modelID,
+          name: entry.name,
+          family: entry.modelID,
+          release_date: today,
+          cost: entry.free ? { input: 0, output: 0, cache: { read: 0, write: 0 } } : undefined,
+          provider: { id: entry.providerID, name: providerName(entry.providerID) },
+        } as ReturnType<typeof providers.connected>[number]["models"][string] & {
+          provider: ReturnType<typeof providers.connected>[number]
+        }
+      })
+    })
 
     const release = createMemo(
       () =>
