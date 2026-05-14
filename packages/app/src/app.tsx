@@ -44,6 +44,7 @@ import { ServerConnection, ServerProvider, serverName, useServer } from "@/conte
 import { PointsProvider } from "@/context/points"
 import { SettingsProvider } from "@/context/settings"
 import { TerminalProvider } from "@/context/terminal"
+import { useBalance } from "@/hooks/use-balance"
 import DirectoryLayout from "@/pages/directory-layout"
 import Layout from "@/pages/layout"
 import { ErrorPage } from "./pages/error"
@@ -106,9 +107,15 @@ function QueryProvider(props: ParentProps) {
   return <QueryClientProvider client={client}>{props.children}</QueryClientProvider>
 }
 
+function BalanceLoader() {
+  useBalance()
+  return null
+}
+
 function AppShellProviders(props: ParentProps) {
   return (
     <PointsProvider>
+      <BalanceLoader />
       <SettingsProvider>
         <PermissionProvider>
           <LayoutProvider>

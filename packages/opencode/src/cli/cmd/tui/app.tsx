@@ -55,6 +55,7 @@ import { Session as SessionApi } from "@/session/session"
 import { TuiEvent } from "./event"
 import { KVProvider, useKV } from "./context/kv"
 import { Provider } from "@/provider/provider"
+import { fetchBalance } from "@opencode-ai/core/util/balance-query"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -354,6 +355,12 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
 
   const args = useArgs()
   onMount(() => {
+    const url = process.env.SOMACODE_BALANCE_GRAPHQL_URL?.trim() || undefined
+    void fetchBalance({ url }).then((result) => {
+      if (!result.ok) return
+      kv.set("usdc_balance", result.usdcBalance)
+      kv.set("points_balance", result.pointsBalance)
+    })
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {

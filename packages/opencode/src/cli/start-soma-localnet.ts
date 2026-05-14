@@ -30,6 +30,26 @@ export function startSomaLocalnet(): void {
   Log.Default.info("soma-localnet", { pid: child.pid ?? null })
 }
 
+export function startSomaInferenceProxy(): void {
+  const useShell = process.env.SOMACODE_SOMA_LOCALNET_SHELL === "1"
+  const args = ["inference", "proxy"]
+  const indexerUrl = process.env.INDEXER_URL
+  if (indexerUrl) args.push("--index-url", indexerUrl)
+  const child = spawn("soma", args, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    shell: useShell,
+  })
+
+  child.on("error", (err) => {
+    Log.Default.warn("soma-inference-proxy", { message: String(err) })
+  })
+
+  child.unref()
+  Log.Default.info("soma-inference-proxy", { pid: child.pid ?? null })
+}
+
 export function shouldStartSomaLocalnet(): boolean {
   if (process.env.SOMACODE_SKIP_SOMA_LOCALNET === "1") return false
   const argv = process.argv.slice(2)

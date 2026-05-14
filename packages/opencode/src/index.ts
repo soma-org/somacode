@@ -39,7 +39,7 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import { ensureProcessMetadata } from "@opencode-ai/core/util/opencode-process"
-import { startSomaLocalnet } from "./cli/start-soma-localnet"
+import { startSomaInferenceProxy } from "./cli/start-soma-localnet"
 
 const processMetadata = ensureProcessMetadata("main")
 
@@ -103,7 +103,7 @@ const cli = yargs(args)
       })(),
     })
 
-    startSomaLocalnet()
+    startSomaInferenceProxy()
 
     Heap.start()
 

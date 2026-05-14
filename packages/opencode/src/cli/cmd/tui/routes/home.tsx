@@ -1,5 +1,5 @@
 import { Prompt, type PromptRef } from "@tui/component/prompt"
-import { createEffect, createSignal, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { Logo } from "../component/logo"
 import { useProject } from "../context/project"
 import { useSync } from "../context/sync"
@@ -8,6 +8,7 @@ import { useArgs } from "../context/args"
 import { useRouteData } from "@tui/context/route"
 import { usePromptRef } from "../context/prompt"
 import { useLocal } from "../context/local"
+import { useKV } from "@tui/context/kv"
 import { TuiPluginRuntime } from "@/cli/cmd/tui/plugin/runtime"
 import { useEditorContext } from "@tui/context/editor"
 
@@ -26,6 +27,17 @@ export function Home() {
   const args = useArgs()
   const local = useLocal()
   const editor = useEditorContext()
+  const kv = useKV()
+  const pointsBalance = createMemo(() => {
+    if (!kv.ready) return 0
+    const v = kv.get("points_balance", 0)
+    return typeof v === "number" && !Number.isNaN(v) ? v : 0
+  })
+  const usdcBalance = createMemo(() => {
+    if (!kv.ready) return 0
+    const v = kv.get("usdc_balance", 0)
+    return typeof v === "number" && !Number.isNaN(v) ? v : 0
+  })
   let sent = false
 
   onMount(() => {
@@ -81,8 +93,8 @@ export function Home() {
               workspaceID={project.workspace.current()}
               right={<TuiPluginRuntime.Slot name="home_prompt_right" workspace_id={project.workspace.current()} />}
               placeholders={placeholder}
-              pointsBalance={0}
-              usdcBalance={0}
+              pointsBalance={pointsBalance()}
+              usdcBalance={usdcBalance()}
             />
           </TuiPluginRuntime.Slot>
         </box>
