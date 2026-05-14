@@ -1,11 +1,13 @@
 import { createMemo, createSignal } from "solid-js"
 import { useLocal } from "@tui/context/local"
 import { useSync } from "@tui/context/sync"
+import { useKV } from "@tui/context/kv"
 import { map, pipe, flatMap, entries, filter, sortBy, take } from "remeda"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { useDialog } from "@tui/ui/dialog"
 import { createDialogProviderOptions, DialogProvider } from "./dialog-provider"
 import { DialogVariant } from "./dialog-variant"
+import { modelKey } from "@opencode-ai/core/util/models-query"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 
@@ -13,10 +15,23 @@ export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
+  const kv = useKV()
   const [query, setQuery] = createSignal("")
 
   const connected = useConnected()
   const providers = createDialogProviderOptions()
+
+  const supportedSet = createMemo(() => {
+    if (!kv.ready) return undefined
+    const list = kv.get("supported_models")
+    if (!Array.isArray(list)) return undefined
+    return new Set(list.filter((x): x is string => typeof x === "string"))
+  })
+  const isSupported = (providerID: string, modelID: string) => {
+    const set = supportedSet()
+    if (!set) return true
+    return set.has(modelKey({ providerID, modelID }))
+  }
 
   const showExtra = createMemo(() => connected() && !props.providerID)
 
@@ -33,6 +48,7 @@ export function DialogModel(props: { providerID?: string }) {
         if (!provider) return []
         const model = provider.models[item.modelID]
         if (!model) return []
+        if (!isSupported(provider.id, model.id)) return []
         return [
           {
             key: item,
@@ -69,6 +85,7 @@ export function DialogModel(props: { providerID?: string }) {
           provider.models,
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
+          filter(([model]) => isSupported(provider.id, model)),
           filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true)),
           map(([model, info]) => ({
             value: { providerID: provider.id, modelID: model },

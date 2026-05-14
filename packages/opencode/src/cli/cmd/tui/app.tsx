@@ -56,6 +56,7 @@ import { TuiEvent } from "./event"
 import { KVProvider, useKV } from "./context/kv"
 import { Provider } from "@/provider/provider"
 import { fetchBalance } from "@opencode-ai/core/util/balance-query"
+import { fetchSupportedModels, modelKey } from "@opencode-ai/core/util/models-query"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -360,6 +361,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       if (!result.ok) return
       kv.set("usdc_balance", result.usdcBalance)
       kv.set("points_balance", result.pointsBalance)
+    })
+    const modelsUrl = process.env.SOMACODE_MODELS_GRAPHQL_URL?.trim() || undefined
+    void fetchSupportedModels({ url: modelsUrl }).then((result) => {
+      if (!result.ok) return
+      kv.set("supported_models", result.models.map(modelKey))
     })
     batch(() => {
       if (args.agent) local.agent.set(args.agent)

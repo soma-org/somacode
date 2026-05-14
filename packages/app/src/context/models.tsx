@@ -1,10 +1,15 @@
-import { createMemo } from "solid-js"
+import { createMemo, createSignal, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { DateTime } from "luxon"
 import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } from "remeda"
+import { makePersisted } from "@solid-primitives/storage"
 import { createSimpleContext } from "@opencode-ai/ui/context"
+import { fetchSupportedModels, modelKey as supportedModelKey } from "@opencode-ai/core/util/models-query"
 import { useProviders } from "@/hooks/use-providers"
+import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
+
+const SUPPORTED_MODELS_URL = (import.meta.env.VITE_MODELS_GRAPHQL_URL ?? "").trim() || undefined
 
 export type ModelKey = { providerID: string; modelID: string }
 
@@ -26,6 +31,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
   name: "Models",
   init: () => {
     const providers = useProviders()
+    const platform = usePlatform()
 
     const [store, setStore, _, ready] = persisted(
       Persist.global("model", ["model.v1"]),
@@ -36,12 +42,27 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       }),
     )
 
+    const storage = typeof globalThis.localStorage !== "undefined" ? globalThis.localStorage : undefined
+    const [supportedKeys, setSupportedKeys] = makePersisted(createSignal<string[]>([]), {
+      name: "opencode.supported-models.keys",
+      storage,
+    })
+    const supportedSet = createMemo(() => new Set(supportedKeys()))
+    onMount(() => {
+      void fetchSupportedModels({ url: SUPPORTED_MODELS_URL, fetch: platform.fetch ?? fetch }).then((result) => {
+        if (!result.ok) return
+        setSupportedKeys(result.models.map(supportedModelKey))
+      })
+    })
+
     const available = createMemo(() =>
       providers.connected().flatMap((p) =>
-        Object.values(p.models).map((m) => ({
-          ...m,
-          provider: p,
-        })),
+        Object.values(p.models)
+          .filter((m) => supportedSet().has(supportedModelKey({ providerID: p.id, modelID: m.id })))
+          .map((m) => ({
+            ...m,
+            provider: p,
+          })),
       ),
     )
 
