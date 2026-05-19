@@ -4,7 +4,7 @@ import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { TextField } from "@opencode-ai/ui/text-field"
-import { createMemo, createSignal, Match, onCleanup, Show, Switch, type Component } from "solid-js"
+import { createMemo, createSignal, Match, onCleanup, onMount, Show, Switch, type Component } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { usePoints } from "@/context/points"
@@ -38,22 +38,82 @@ export const DialogOnrampCheckout: Component = () => {
   const [walletError, setWalletError] = createSignal<string | undefined>(undefined)
   const [phase, setPhase] = createSignal<Phase>({ kind: "input" })
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
+  const [activeSessionId, setActiveSessionId] = createSignal<string | undefined>(undefined)
 
   let subscription: OnrampSubscription | undefined
   const alive = { value: true }
 
+  const openStream = () => {
+    if (subscription) return
+    subscription = subscribeToOnrampEvents({
+      onEvent: (event) => {
+        if (!alive.value) return
+        const sessionId = activeSessionId()
+        const eventSessionId = event.session?.id
+        console.info("[onramp] event", {
+          status: event.status,
+          eventSessionId,
+          activeSessionId: sessionId,
+        })
+
+        if (!sessionId) return
+        if (eventSessionId && eventSessionId !== sessionId) return
+
+        const details = event.session?.transaction_details
+        if (event.status === "fulfillment_complete") {
+          applyBalanceUpdate(details)
+          setPhase({ kind: "success", details })
+          return
+        }
+        if (event.status === "rejected") {
+          setPhase({ kind: "rejected", details })
+          return
+        }
+        const current = phase()
+        if (current.kind === "waiting" || current.kind === "creating") {
+          setPhase({ kind: "waiting", status: event.status, details })
+        }
+      },
+      onError: () => {
+        if (!alive.value) return
+        const current = phase()
+        if (current.kind === "waiting" && !isTerminalStatus(current.status)) {
+          setPhase({ kind: "error", reason: "stream_lost" })
+        }
+      },
+    })
+  }
+
+  const applyBalanceUpdate = (details?: OnrampTransactionDetails) => {
+    const amount = Number(details?.destination_amount ?? "")
+    if (!Number.isFinite(amount) || amount <= 0) return
+    points.setUsdcBalance((current) => current + amount)
+  }
+
+  onMount(() => {
+    console.info("[onramp] dialog mounted")
+    openStream()
+  })
+
   onCleanup(() => {
+    console.info("[onramp] dialog unmounted")
     alive.value = false
     subscription?.close()
     subscription = undefined
   })
 
-  const closeStream = () => {
-    subscription?.close()
-    subscription = undefined
-  }
-
   const startSession = async () => {
+    const current = phase()
+    console.info("[onramp] startSession invoked", { phase: current.kind })
+    if (
+      current.kind === "creating" ||
+      current.kind === "waiting" ||
+      current.kind === "success"
+    ) {
+      console.warn("[onramp] startSession ignored — already in", current.kind)
+      return
+    }
+
     const wallet = walletInput().trim()
     if (!wallet) {
       setWalletError(language.t("onramp.wallet.required"))
@@ -66,8 +126,12 @@ export const DialogOnrampCheckout: Component = () => {
     setWalletError(undefined)
     points.setWalletAddress(wallet)
 
+    setActiveSessionId(undefined)
     setPhase({ kind: "creating" })
     setRedirectUrl(undefined)
+
+    // Ensure the SSE stream is open before we create the session, so we don't miss early events.
+    openStream()
 
     const result = await createOnrampSession({
       walletAddress: wallet,
@@ -80,34 +144,10 @@ export const DialogOnrampCheckout: Component = () => {
       return
     }
 
+    console.log("active sessionId:", result.sessionId)
+    setActiveSessionId(result.sessionId)
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized" })
-
-    subscription = subscribeToOnrampEvents({
-      sessionId: result.sessionId,
-      onEvent: (event) => {
-        if (!alive.value) return
-        const details = event.session?.transaction_details
-        if (event.status === "fulfillment_complete") {
-          closeStream()
-          setPhase({ kind: "success", details })
-          return
-        }
-        if (event.status === "rejected") {
-          closeStream()
-          setPhase({ kind: "rejected", details })
-          return
-        }
-        setPhase({ kind: "waiting", status: event.status, details })
-      },
-      onError: () => {
-        if (!alive.value) return
-        const current = phase()
-        if (current.kind === "waiting" && !isTerminalStatus(current.status)) {
-          setPhase({ kind: "error", reason: "stream_lost" })
-        }
-      },
-    })
 
     platform.openLink(result.redirectUrl)
   }
@@ -118,7 +158,7 @@ export const DialogOnrampCheckout: Component = () => {
   }
 
   const resetToInput = () => {
-    closeStream()
+    setActiveSessionId(undefined)
     setRedirectUrl(undefined)
     setPhase({ kind: "input" })
   }
@@ -188,7 +228,12 @@ export const DialogOnrampCheckout: Component = () => {
                 <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
                   {language.t("onramp.cancel")}
                 </Button>
-                <Button type="submit" variant="primary" size="large">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="large"
+                  disabled={phase().kind === "creating"}
+                >
                   {language.t("onramp.start")}
                 </Button>
               </div>

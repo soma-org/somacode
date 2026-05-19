@@ -64,6 +64,8 @@ export async function createOnrampSession(options: {
 
   const f = options.fetch ?? fetch
 
+  console.info("[onramp] POST /api/create-session", { wallet: walletAddress })
+
   try {
     const res = await f(`${baseUrl}/api/create-session`, {
       method: "POST",
@@ -90,7 +92,8 @@ export async function createOnrampSession(options: {
 }
 
 export type SubscribeOptions = {
-  sessionId: string
+  /** Optional session id. When omitted, subscribes to the global `/api/events` stream and the caller is responsible for filtering by `session.id`. */
+  sessionId?: string
   baseUrl?: string
   onEvent: (event: OnrampEvent) => void
   /** Called only when the EventSource is permanently closed (readyState === CLOSED). Transient retries are swallowed. */
@@ -118,7 +121,9 @@ function parseEventData(raw: string): OnrampEvent | null {
 
 export function subscribeToOnrampEvents(options: SubscribeOptions): OnrampSubscription {
   const baseUrl = (options.baseUrl ?? readOnrampBaseUrl()).replace(/\/+$/, "")
-  const url = `${baseUrl}/api/events/${encodeURIComponent(options.sessionId)}`
+  const url = options.sessionId
+    ? `${baseUrl}/api/events/${encodeURIComponent(options.sessionId)}`
+    : `${baseUrl}/api/events`
 
   let source: EventSource | null = null
   let closed = false
@@ -132,8 +137,13 @@ export function subscribeToOnrampEvents(options: SubscribeOptions): OnrampSubscr
 
   const handle = (e: MessageEvent) => {
     if (closed) return
+    console.info("[onramp] sse:", e.type, e.data)
     const data = typeof e.data === "string" ? parseEventData(e.data) : null
-    if (data) options.onEvent(data)
+    if (data) {
+      options.onEvent(data)
+    } else if (typeof e.data === "string") {
+      console.warn("[onramp] could not parse event payload:", e.data)
+    }
   }
 
   source.addEventListener("status", handle)
