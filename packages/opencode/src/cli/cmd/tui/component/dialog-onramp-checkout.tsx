@@ -195,17 +195,23 @@ export function DialogOnrampCheckout() {
   }
 
   useBindings(() => ({
-    enabled: () => {
-      const k = phase().kind
-      return k === "waiting" || k === "success" || k === "rejected" || k === "error"
-    },
+    enabled: () => phase().kind === "waiting",
     bindings: [
       {
         key: "o",
-        desc: "Open checkout",
+        desc: "Open payment page",
         group: "Dialog",
         cmd: () => reopenCheckout(),
       },
+    ],
+  }))
+
+  useBindings(() => ({
+    enabled: () => {
+      const k = phase().kind
+      return k === "rejected" || k === "error"
+    },
+    bindings: [
       {
         key: "r",
         desc: "Restart",
@@ -288,13 +294,14 @@ export function DialogOnrampCheckout() {
               <box gap={1}>
                 <Spinner color={theme.textMuted}>{statusLabel(current.status)}</Spinner>
                 <text fg={theme.textMuted} wrapMode="word">
-                  A checkout page was opened in your browser. Complete the purchase to receive USDC.
+                  A payment page has opened in your browser. Complete the purchase to receive USDC.
+                </text>
+                <text fg={theme.error} wrapMode="word">
+                  Please don't close this dialog until the payment has succeeded.
                 </text>
                 <box paddingBottom={1}>
                   <text fg={theme.textMuted}>
-                    <span style={{ fg: theme.text }}>o</span> open checkout{" "}
-                    <span style={{ fg: theme.text }}>r</span> restart{" "}
-                    <span style={{ fg: theme.text }}>esc</span> close
+                    <span style={{ fg: theme.text }}>o</span> open payment page
                   </text>
                 </box>
               </box>

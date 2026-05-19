@@ -224,13 +224,13 @@ export const DialogOnrampCheckout: Component = () => {
               <p class="text-14-regular text-text-weak leading-normal">
                 {language.t("onramp.openCheckoutHint")}
               </p>
+              <p class="text-14-medium text-text-danger-base leading-normal">
+                {language.t("onramp.waitingWarning")}
+              </p>
               <Show when={redirectUrl()}>
                 <div class="flex flex-wrap gap-2">
                   <Button type="button" variant="primary" size="large" onClick={reopenCheckout}>
                     {language.t("onramp.openCheckout")}
-                  </Button>
-                  <Button type="button" variant="ghost" size="large" onClick={resetToInput}>
-                    {language.t("onramp.changeWallet")}
                   </Button>
                 </div>
               </Show>
