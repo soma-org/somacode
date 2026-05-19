@@ -2,10 +2,12 @@ import { TextareaRenderable, TextAttributes } from "@opentui/core"
 import { createSignal, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import open from "open"
 import {
-  createOnrampSession,
+  buildPaymentGatewayUrl,
   isTerminalStatus,
   subscribeToOnrampEvents,
-  type CreateSessionFailureReason,
+  walletAddressesMatch,
+  DEFAULT_PAYMENT_GATEWAY_URL,
+  type BuildGatewayUrlFailureReason,
   type OnrampStatus,
   type OnrampSubscription,
   type OnrampTransactionDetails,
@@ -19,13 +21,14 @@ import * as Clipboard from "@tui/util/clipboard"
 
 const WALLET_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
+type ErrorReason = BuildGatewayUrlFailureReason | "stream_lost"
+
 type Phase =
   | { kind: "input" }
-  | { kind: "creating" }
   | { kind: "waiting"; status: OnrampStatus; details?: OnrampTransactionDetails }
   | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
-  | { kind: "error"; reason: CreateSessionFailureReason | "stream_lost" }
+  | { kind: "error"; reason: ErrorReason }
 
 function statusLabel(status: OnrampStatus): string {
   switch (status) {
@@ -42,18 +45,12 @@ function statusLabel(status: OnrampStatus): string {
   }
 }
 
-function errorMessage(reason: CreateSessionFailureReason | "stream_lost"): string {
+function errorMessage(reason: ErrorReason): string {
   switch (reason) {
-    case "missing_base_url":
-      return "SOMACODE_ONRAMP_BASE_URL is not configured."
+    case "missing_gateway_url":
+      return "SOMACODE_PAYMENT_GATEWAY_URL is not configured."
     case "missing_wallet_address":
       return "Wallet address is required."
-    case "http_error":
-      return "The onramp backend rejected the request."
-    case "invalid_response":
-      return "The onramp backend returned an unexpected response."
-    case "network_error":
-      return "Could not reach the onramp backend."
     case "stream_lost":
       return "Lost connection to the onramp event stream."
   }
@@ -78,6 +75,7 @@ export function DialogOnrampCheckout() {
   const kv = useKV()
 
   const baseUrl = process.env.SOMACODE_ONRAMP_BASE_URL?.trim() || undefined
+  const gatewayUrl = process.env.SOMACODE_PAYMENT_GATEWAY_URL?.trim() || DEFAULT_PAYMENT_GATEWAY_URL
   const initialWallet = (() => {
     const v = kv.get("wallet_address", "")
     return typeof v === "string" ? v : ""
@@ -86,7 +84,7 @@ export function DialogOnrampCheckout() {
   const [phase, setPhase] = createSignal<Phase>({ kind: "input" })
   const [walletError, setWalletError] = createSignal<string | undefined>(undefined)
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
-  const [activeSessionId, setActiveSessionId] = createSignal<string | undefined>(undefined)
+  const [activeWallet, setActiveWallet] = createSignal<string | undefined>(undefined)
 
   let textarea: TextareaRenderable | undefined
   let subscription: OnrampSubscription | undefined
@@ -106,10 +104,10 @@ export function DialogOnrampCheckout() {
       baseUrl,
       onEvent: (event) => {
         if (!alive.value) return
-        const sessionId = activeSessionId()
-        const eventSessionId = event.session?.id
-        if (!sessionId) return
-        if (eventSessionId && eventSessionId !== sessionId) return
+        const wallet = activeWallet()
+        if (!wallet) return
+        const eventWallet = event.session?.transaction_details?.wallet_address
+        if (!walletAddressesMatch(wallet, eventWallet)) return
 
         const details = event.session?.transaction_details
         if (event.status === "fulfillment_complete") {
@@ -122,7 +120,7 @@ export function DialogOnrampCheckout() {
           return
         }
         const current = phase()
-        if (current.kind === "waiting" || current.kind === "creating") {
+        if (current.kind === "waiting") {
           setPhase({ kind: "waiting", status: event.status, details })
         }
       },
@@ -152,9 +150,9 @@ export function DialogOnrampCheckout() {
     subscription = undefined
   })
 
-  const startSession = async (wallet: string) => {
+  const startCheckout = (wallet: string) => {
     const current = phase()
-    if (current.kind === "creating" || current.kind === "waiting" || current.kind === "success") return
+    if (current.kind === "waiting" || current.kind === "success") return
 
     const trimmed = wallet.trim()
     if (!trimmed) {
@@ -168,22 +166,16 @@ export function DialogOnrampCheckout() {
     setWalletError(undefined)
     kv.set("wallet_address", trimmed)
 
-    setActiveSessionId(undefined)
-    setRedirectUrl(undefined)
-    setPhase({ kind: "creating" })
-    openStream()
-
-    const result = await createOnrampSession({ walletAddress: trimmed, baseUrl })
-    if (!alive.value) return
-
+    const result = buildPaymentGatewayUrl({ walletAddress: trimmed, gatewayUrl })
     if (!result.ok) {
       setPhase({ kind: "error", reason: result.reason })
       return
     }
 
-    setActiveSessionId(result.sessionId)
+    setActiveWallet(trimmed)
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized" })
+    openStream()
     open(result.redirectUrl).catch(() => {})
   }
 
@@ -193,7 +185,7 @@ export function DialogOnrampCheckout() {
   }
 
   const resetToInput = () => {
-    setActiveSessionId(undefined)
+    setActiveWallet(undefined)
     setRedirectUrl(undefined)
     setPhase({ kind: "input" })
     setTimeout(() => {
@@ -264,7 +256,7 @@ export function DialogOnrampCheckout() {
             <textarea
               onSubmit={() => {
                 if (!textarea) return
-                void startSession(textarea.plainText)
+                startCheckout(textarea.plainText)
               }}
               height={3}
               ref={(val: TextareaRenderable) => {
@@ -286,12 +278,6 @@ export function DialogOnrampCheckout() {
                 <span style={{ fg: theme.text }}>esc</span> cancel
               </text>
             </box>
-          </box>
-        </Match>
-
-        <Match when={phase().kind === "creating"}>
-          <box paddingBottom={1}>
-            <Spinner color={theme.textMuted}>Starting checkout session...</Spinner>
           </box>
         </Match>
 

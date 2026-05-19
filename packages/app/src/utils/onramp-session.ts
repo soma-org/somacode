@@ -1,17 +1,20 @@
 import {
-  createOnrampSession as coreCreateOnrampSession,
+  buildPaymentGatewayUrl as coreBuildPaymentGatewayUrl,
   subscribeToOnrampEvents as coreSubscribeToOnrampEvents,
   DEFAULT_ONRAMP_BASE_URL,
-  type CreateSessionResult,
+  DEFAULT_PAYMENT_GATEWAY_URL,
+  type BuildGatewayUrlResult,
   type SubscribeOptions,
   type OnrampSubscription,
 } from "@opencode-ai/core/util/onramp-session"
 
 export {
   DEFAULT_ONRAMP_BASE_URL,
+  DEFAULT_PAYMENT_GATEWAY_URL,
   isTerminalStatus,
-  type CreateSessionFailureReason,
-  type CreateSessionResult,
+  walletAddressesMatch,
+  type BuildGatewayUrlFailureReason,
+  type BuildGatewayUrlResult,
   type OnrampEvent,
   type OnrampSession,
   type OnrampStatus,
@@ -24,14 +27,17 @@ export function readOnrampBaseUrl(): string {
   return ((import.meta.env.VITE_ONRAMP_BASE_URL ?? "").trim() || DEFAULT_ONRAMP_BASE_URL).replace(/\/+$/, "")
 }
 
-export function createOnrampSession(options: {
+export function readPaymentGatewayUrl(): string {
+  return ((import.meta.env.VITE_PAYMENT_GATEWAY_URL ?? "").trim() || DEFAULT_PAYMENT_GATEWAY_URL).replace(/\/+$/, "")
+}
+
+export function buildPaymentGatewayUrl(options: {
   walletAddress: string
-  baseUrl?: string
-  fetch?: typeof fetch
-}): Promise<CreateSessionResult> {
-  return coreCreateOnrampSession({
+  gatewayUrl?: string
+}): BuildGatewayUrlResult {
+  return coreBuildPaymentGatewayUrl({
     ...options,
-    baseUrl: options.baseUrl ?? readOnrampBaseUrl(),
+    gatewayUrl: options.gatewayUrl ?? readPaymentGatewayUrl(),
   })
 }
 

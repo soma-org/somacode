@@ -9,22 +9,24 @@ import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { usePoints } from "@/context/points"
 import {
-  createOnrampSession,
+  buildPaymentGatewayUrl,
   isTerminalStatus,
   subscribeToOnrampEvents,
-  type CreateSessionFailureReason,
+  walletAddressesMatch,
+  type BuildGatewayUrlFailureReason,
   type OnrampStatus,
   type OnrampSubscription,
   type OnrampTransactionDetails,
 } from "@/utils/onramp-session"
 
+type ErrorReason = BuildGatewayUrlFailureReason | "stream_lost"
+
 type Phase =
   | { kind: "input" }
-  | { kind: "creating" }
   | { kind: "waiting"; status: OnrampStatus; details?: OnrampTransactionDetails }
   | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
-  | { kind: "error"; reason: CreateSessionFailureReason | "stream_lost" }
+  | { kind: "error"; reason: ErrorReason }
 
 const WALLET_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
@@ -38,7 +40,7 @@ export const DialogOnrampCheckout: Component = () => {
   const [walletError, setWalletError] = createSignal<string | undefined>(undefined)
   const [phase, setPhase] = createSignal<Phase>({ kind: "input" })
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
-  const [activeSessionId, setActiveSessionId] = createSignal<string | undefined>(undefined)
+  const [activeWallet, setActiveWallet] = createSignal<string | undefined>(undefined)
 
   let subscription: OnrampSubscription | undefined
   const alive = { value: true }
@@ -48,16 +50,16 @@ export const DialogOnrampCheckout: Component = () => {
     subscription = subscribeToOnrampEvents({
       onEvent: (event) => {
         if (!alive.value) return
-        const sessionId = activeSessionId()
-        const eventSessionId = event.session?.id
+        const wallet = activeWallet()
+        const eventWallet = event.session?.transaction_details?.wallet_address
         console.info("[onramp] event", {
           status: event.status,
-          eventSessionId,
-          activeSessionId: sessionId,
+          eventWallet,
+          activeWallet: wallet,
         })
 
-        if (!sessionId) return
-        if (eventSessionId && eventSessionId !== sessionId) return
+        if (!wallet) return
+        if (!walletAddressesMatch(wallet, eventWallet)) return
 
         const details = event.session?.transaction_details
         if (event.status === "fulfillment_complete") {
@@ -70,7 +72,7 @@ export const DialogOnrampCheckout: Component = () => {
           return
         }
         const current = phase()
-        if (current.kind === "waiting" || current.kind === "creating") {
+        if (current.kind === "waiting") {
           setPhase({ kind: "waiting", status: event.status, details })
         }
       },
@@ -102,15 +104,11 @@ export const DialogOnrampCheckout: Component = () => {
     subscription = undefined
   })
 
-  const startSession = async () => {
+  const startCheckout = () => {
     const current = phase()
-    console.info("[onramp] startSession invoked", { phase: current.kind })
-    if (
-      current.kind === "creating" ||
-      current.kind === "waiting" ||
-      current.kind === "success"
-    ) {
-      console.warn("[onramp] startSession ignored — already in", current.kind)
+    console.info("[onramp] startCheckout invoked", { phase: current.kind })
+    if (current.kind === "waiting" || current.kind === "success") {
+      console.warn("[onramp] startCheckout ignored — already in", current.kind)
       return
     }
 
@@ -126,29 +124,17 @@ export const DialogOnrampCheckout: Component = () => {
     setWalletError(undefined)
     points.setWalletAddress(wallet)
 
-    setActiveSessionId(undefined)
-    setPhase({ kind: "creating" })
-    setRedirectUrl(undefined)
-
-    // Ensure the SSE stream is open before we create the session, so we don't miss early events.
-    openStream()
-
-    const result = await createOnrampSession({
-      walletAddress: wallet,
-      fetch: platform.fetch ?? fetch,
-    })
-    if (!alive.value) return
-
+    const result = buildPaymentGatewayUrl({ walletAddress: wallet })
     if (!result.ok) {
       setPhase({ kind: "error", reason: result.reason })
       return
     }
 
-    console.log("active sessionId:", result.sessionId)
-    setActiveSessionId(result.sessionId)
+    console.info("[onramp] opening gateway", { url: result.redirectUrl })
+    setActiveWallet(wallet)
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized" })
-
+    openStream()
     platform.openLink(result.redirectUrl)
   }
 
@@ -158,7 +144,7 @@ export const DialogOnrampCheckout: Component = () => {
   }
 
   const resetToInput = () => {
-    setActiveSessionId(undefined)
+    setActiveWallet(undefined)
     setRedirectUrl(undefined)
     setPhase({ kind: "input" })
   }
@@ -182,16 +168,10 @@ export const DialogOnrampCheckout: Component = () => {
     const current = phase()
     if (current.kind !== "error") return ""
     switch (current.reason) {
-      case "missing_base_url":
-        return language.t("onramp.error.missing_base_url")
+      case "missing_gateway_url":
+        return language.t("onramp.error.missing_gateway_url")
       case "missing_wallet_address":
         return language.t("onramp.error.missing_wallet_address")
-      case "http_error":
-        return language.t("onramp.error.http_error")
-      case "invalid_response":
-        return language.t("onramp.error.invalid_response")
-      case "network_error":
-        return language.t("onramp.error.network_error")
       case "stream_lost":
         return language.t("onramp.error.stream_lost")
       default:
@@ -201,7 +181,7 @@ export const DialogOnrampCheckout: Component = () => {
 
   const handleSubmit = (e: SubmitEvent) => {
     e.preventDefault()
-    void startSession()
+    startCheckout()
   }
 
   return (
@@ -228,23 +208,11 @@ export const DialogOnrampCheckout: Component = () => {
                 <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
                   {language.t("onramp.cancel")}
                 </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="large"
-                  disabled={phase().kind === "creating"}
-                >
+                <Button type="submit" variant="primary" size="large">
                   {language.t("onramp.start")}
                 </Button>
               </div>
             </form>
-          </Match>
-
-          <Match when={phase().kind === "creating"}>
-            <div class="flex items-center gap-3 py-6">
-              <Spinner class="size-5 text-icon-strong-base" />
-              <span class="text-14-regular text-text-base">{language.t("onramp.status.creating")}</span>
-            </div>
           </Match>
 
           <Match when={phase().kind === "waiting"}>

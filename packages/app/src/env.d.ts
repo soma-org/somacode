@@ -9,8 +9,11 @@ interface ImportMetaEnv {
   /** Stripe secret key (`sk_test_…` / `sk_live_…`) for `Authorization: Bearer` on `VITE_USDC_CHECKOUT_URL`. */
   readonly VITE_STRIPE_TEST_KEY?: string
 
-  /** Base URL of the Stripe crypto onramp backend (POST /api/create-session, GET /api/events/{id}). */
+  /** Base URL of the Stripe crypto onramp backend (GET /api/events SSE stream). */
   readonly VITE_ONRAMP_BASE_URL?: string
+
+  /** URL of the payment gateway site that handles Stripe Crypto onramp checkout. The wallet address is appended as `?wallet=0x...`. */
+  readonly VITE_PAYMENT_GATEWAY_URL?: string
 
   readonly VITE_SENTRY_DSN?: string
   readonly VITE_SENTRY_ENVIRONMENT?: string

@@ -704,7 +704,6 @@ export const dict = {
   "onramp.changeWallet": "Use a different wallet",
   "onramp.openCheckout": "Reopen checkout window",
   "onramp.openCheckoutHint": "Complete payment in the Stripe window that opened in your browser.",
-  "onramp.status.creating": "Starting checkout session...",
   "onramp.status.initialized": "Waiting for you to start payment...",
   "onramp.status.requires_payment": "Waiting for payment...",
   "onramp.status.fulfillment_processing": "Processing your USDC...",
@@ -712,14 +711,9 @@ export const dict = {
   "onramp.status.rejected": "Purchase rejected",
   "onramp.status.unknown": "Working...",
   "onramp.error.title": "Could not start checkout",
-  "onramp.error.missing_base_url":
-    "VITE_ONRAMP_BASE_URL is not configured. Set it to your onramp backend URL.",
+  "onramp.error.missing_gateway_url":
+    "VITE_PAYMENT_GATEWAY_URL is not configured. Set it to your payment gateway URL.",
   "onramp.error.missing_wallet_address": "Wallet address is required.",
-  "onramp.error.http_error": "The onramp backend returned an error. Please try again.",
-  "onramp.error.invalid_response":
-    "The onramp backend returned an unexpected response. Please try again.",
-  "onramp.error.network_error":
-    "Could not reach the onramp backend. Check your connection and try again.",
   "onramp.error.stream_lost":
     "Connection to the onramp backend was lost. We will retry automatically.",
   "onramp.success.heading": "USDC purchased",

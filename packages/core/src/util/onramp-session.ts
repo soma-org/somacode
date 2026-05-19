@@ -1,4 +1,5 @@
 export const DEFAULT_ONRAMP_BASE_URL = "http://95.217.102.55:3010"
+export const DEFAULT_PAYMENT_GATEWAY_URL = "http://localhost:5173"
 
 export type OnrampStatus =
   | "initialized"
@@ -27,21 +28,11 @@ export type OnrampEvent = {
   session: OnrampSession
 }
 
-export type CreateSessionFailureReason =
-  | "missing_base_url"
-  | "missing_wallet_address"
-  | "http_error"
-  | "invalid_response"
-  | "network_error"
+export type BuildGatewayUrlFailureReason = "missing_gateway_url" | "missing_wallet_address"
 
-export type CreateSessionResult =
-  | {
-      ok: true
-      sessionId: string
-      redirectUrl: string
-      clientSecret?: string
-    }
-  | { ok: false; reason: CreateSessionFailureReason }
+export type BuildGatewayUrlResult =
+  | { ok: true; redirectUrl: string }
+  | { ok: false; reason: BuildGatewayUrlFailureReason }
 
 export function isTerminalStatus(status: OnrampStatus): boolean {
   return status === "fulfillment_complete" || status === "rejected"
@@ -51,46 +42,30 @@ function normalizeBaseUrl(input?: string): string {
   return (input ?? DEFAULT_ONRAMP_BASE_URL).trim().replace(/\/+$/, "")
 }
 
-export async function createOnrampSession(options: {
+function normalizeGatewayUrl(input?: string): string {
+  return (input ?? DEFAULT_PAYMENT_GATEWAY_URL).trim().replace(/\/+$/, "")
+}
+
+export function buildPaymentGatewayUrl(options: {
   walletAddress: string
-  baseUrl?: string
-  fetch?: typeof fetch
-}): Promise<CreateSessionResult> {
+  gatewayUrl?: string
+}): BuildGatewayUrlResult {
   const walletAddress = options.walletAddress.trim()
   if (!walletAddress) return { ok: false, reason: "missing_wallet_address" }
 
-  const baseUrl = normalizeBaseUrl(options.baseUrl)
-  if (!baseUrl) return { ok: false, reason: "missing_base_url" }
+  const base = normalizeGatewayUrl(options.gatewayUrl)
+  if (!base) return { ok: false, reason: "missing_gateway_url" }
 
-  const f = options.fetch ?? fetch
+  return { ok: true, redirectUrl: `${base}?wallet=${encodeURIComponent(walletAddress)}` }
+}
 
-  try {
-    const res = await f(`${baseUrl}/api/create-session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ wallet_address: walletAddress }),
-    })
-
-    if (!res?.ok) return { ok: false, reason: "http_error" }
-
-    const data: unknown = await res.json().catch(() => undefined)
-    if (typeof data !== "object" || data === null) return { ok: false, reason: "invalid_response" }
-
-    const record = data as Record<string, unknown>
-    const sessionId = typeof record.session_id === "string" ? record.session_id.trim() : ""
-    const redirectUrl = typeof record.redirect_url === "string" ? record.redirect_url.trim() : ""
-    const clientSecret = typeof record.client_secret === "string" ? record.client_secret : undefined
-
-    if (!sessionId || !redirectUrl) return { ok: false, reason: "invalid_response" }
-
-    return { ok: true, sessionId, redirectUrl, clientSecret }
-  } catch {
-    return { ok: false, reason: "network_error" }
-  }
+export function walletAddressesMatch(a?: string, b?: string): boolean {
+  if (!a || !b) return false
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
 
 export type SubscribeOptions = {
-  /** Optional session id. When omitted, subscribes to the global `/api/events` stream and the caller is responsible for filtering by `session.id`. */
+  /** Optional session id. When omitted, subscribes to the global `/api/events` stream and the caller is responsible for filtering events (typically by `transaction_details.wallet_address`). */
   sessionId?: string
   baseUrl?: string
   fetch?: typeof fetch
