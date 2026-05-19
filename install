@@ -1,34 +1,59 @@
 #!/usr/bin/env bash
 set -euo pipefail
-APP=opencode
+
+APP=somacode
+SUP_REPO="soma-org/sup"
+SOMACODE_REPO="soma-org/somacode"
+SUP_RELEASES_URL="https://github.com/${SUP_REPO}/releases"
+SOMACODE_RELEASES_URL="https://github.com/${SOMACODE_REPO}/releases"
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
 ORANGE='\033[38;5;214m'
-NC='\033[0m' # No Color
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+# Global platform vars (set by detect_platform)
+OS=""
+ARCH=""
+OS_SUP=""
+ARCH_SUP=""
+SUP_BIN=""
+SOMACODE_BIN=""
+IS_MUSL=false
+NEEDS_BASELINE=false
+
+SUP_INSTALL_DIR="${SUP_HOME:-$HOME/.local}/bin"
+SOMACODE_INSTALL_DIR="$HOME/.somacode/bin"
 
 usage() {
     cat <<EOF
-OpenCode Installer
+SomaCode Installer
+
+Installs the full SOMA toolchain: sup → soma → somacode
 
 Usage: install.sh [options]
 
 Options:
     -h, --help              Display this help message
-    -v, --version <version> Install a specific version (e.g., 1.0.180)
-    -b, --binary <path>     Install from a local binary instead of downloading
+    -v, --version <version> Install a specific somacode version (e.g., 1.0.180)
+    -b, --binary <path>     Install somacode from a local binary instead of downloading
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
+        --skip-verify       Skip SHA256 checksum verification for sup
 
 Examples:
-    curl -fsSL https://opencode.ai/install | bash
-    curl -fsSL https://opencode.ai/install | bash -s -- --version 1.0.180
-    ./install --binary /path/to/opencode
+    curl -fsSL https://somacode.ai/install | bash
+    curl -fsSL https://somacode.ai/install | bash -s -- --version 1.0.180
+    ./install --binary /path/to/somacode
 EOF
 }
 
 requested_version=${VERSION:-}
 no_modify_path=false
 binary_path=""
+skip_verify=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -58,178 +83,295 @@ while [[ $# -gt 0 ]]; do
             no_modify_path=true
             shift
             ;;
+        --skip-verify)
+            skip_verify=true
+            shift
+            ;;
         *)
-            echo -e "${ORANGE}Warning: Unknown option '$1'${NC}" >&2
+            echo -e "${YELLOW}Warning: Unknown option '$1'${NC}" >&2
             shift
             ;;
     esac
 done
 
-INSTALL_DIR=$HOME/.opencode/bin
-mkdir -p "$INSTALL_DIR"
-
-# If --binary is provided, skip all download/detection logic
-if [ -n "$binary_path" ]; then
-    if [ ! -f "$binary_path" ]; then
-        echo -e "${RED}Error: Binary not found at ${binary_path}${NC}"
-        exit 1
-    fi
-    specific_version="local"
-else
-    raw_os=$(uname -s)
-    os=$(echo "$raw_os" | tr '[:upper:]' '[:lower:]')
-    case "$raw_os" in
-      Darwin*) os="darwin" ;;
-      Linux*) os="linux" ;;
-      MINGW*|MSYS*|CYGWIN*) os="windows" ;;
-    esac
-
-    arch=$(uname -m)
-    if [[ "$arch" == "aarch64" ]]; then
-      arch="arm64"
-    fi
-    if [[ "$arch" == "x86_64" ]]; then
-      arch="x64"
-    fi
-
-    if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
-      rosetta_flag=$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)
-      if [ "$rosetta_flag" = "1" ]; then
-        arch="arm64"
-      fi
-    fi
-
-    combo="$os-$arch"
-    case "$combo" in
-      linux-x64|linux-arm64|darwin-x64|darwin-arm64|windows-x64)
-        ;;
-      *)
-        echo -e "${RED}Unsupported OS/Arch: $os/$arch${NC}"
-        exit 1
-        ;;
-    esac
-
-    archive_ext=".zip"
-    if [ "$os" = "linux" ]; then
-      archive_ext=".tar.gz"
-    fi
-
-    is_musl=false
-    if [ "$os" = "linux" ]; then
-      if [ -f /etc/alpine-release ]; then
-        is_musl=true
-      fi
-
-      if command -v ldd >/dev/null 2>&1; then
-        if ldd --version 2>&1 | grep -qi musl; then
-          is_musl=true
-        fi
-      fi
-    fi
-
-    needs_baseline=false
-    if [ "$arch" = "x64" ]; then
-      if [ "$os" = "linux" ]; then
-        if ! grep -qwi avx2 /proc/cpuinfo 2>/dev/null; then
-          needs_baseline=true
-        fi
-      fi
-
-      if [ "$os" = "darwin" ]; then
-        avx2=$(sysctl -n hw.optional.avx2_0 2>/dev/null || echo 0)
-        if [ "$avx2" != "1" ]; then
-          needs_baseline=true
-        fi
-      fi
-
-      if [ "$os" = "windows" ]; then
-        ps="(Add-Type -MemberDefinition \"[DllImport(\"\"kernel32.dll\"\")] public static extern bool IsProcessorFeaturePresent(int ProcessorFeature);\" -Name Kernel32 -Namespace Win32 -PassThru)::IsProcessorFeaturePresent(40)"
-        out=""
-        if command -v powershell.exe >/dev/null 2>&1; then
-          out=$(powershell.exe -NoProfile -NonInteractive -Command "$ps" 2>/dev/null || true)
-        elif command -v pwsh >/dev/null 2>&1; then
-          out=$(pwsh -NoProfile -NonInteractive -Command "$ps" 2>/dev/null || true)
-        fi
-        out=$(echo "$out" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-        if [ "$out" != "true" ] && [ "$out" != "1" ]; then
-          needs_baseline=true
-        fi
-      fi
-    fi
-
-    target="$os-$arch"
-    if [ "$needs_baseline" = "true" ]; then
-      target="$target-baseline"
-    fi
-    if [ "$is_musl" = "true" ]; then
-      target="$target-musl"
-    fi
-
-    filename="$APP-$target$archive_ext"
-
-
-    if [ "$os" = "linux" ]; then
-        if ! command -v tar >/dev/null 2>&1; then
-             echo -e "${RED}Error: 'tar' is required but not installed.${NC}"
-             exit 1
-        fi
-    else
-        if ! command -v unzip >/dev/null 2>&1; then
-            echo -e "${RED}Error: 'unzip' is required but not installed.${NC}"
-            exit 1
-        fi
-    fi
-
-    if [ -z "$requested_version" ]; then
-        url="https://github.com/anomalyco/opencode/releases/latest/download/$filename"
-        specific_version=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
-
-        if [[ $? -ne 0 || -z "$specific_version" ]]; then
-            echo -e "${RED}Failed to fetch version information${NC}"
-            exit 1
-        fi
-    else
-        # Strip leading 'v' if present
-        requested_version="${requested_version#v}"
-        url="https://github.com/anomalyco/opencode/releases/download/v${requested_version}/$filename"
-        specific_version=$requested_version
-
-        # Verify the release exists before downloading
-        http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/anomalyco/opencode/releases/tag/v${requested_version}")
-        if [ "$http_status" = "404" ]; then
-            echo -e "${RED}Error: Release v${requested_version} not found${NC}"
-            echo -e "${MUTED}Available releases: https://github.com/anomalyco/opencode/releases${NC}"
-            exit 1
-        fi
-    fi
-fi
+# ============================================================
+# Helpers
+# ============================================================
 
 print_message() {
     local level=$1
     local message=$2
-    local color=""
-
     case $level in
-        info) color="${NC}" ;;
-        warning) color="${NC}" ;;
-        error) color="${RED}" ;;
+        info)    echo -e "${message}${NC}" ;;
+        warning) echo -e "${YELLOW}${message}${NC}" ;;
+        error)   echo -e "${RED}${message}${NC}" ;;
     esac
-
-    echo -e "${color}${message}${NC}"
 }
 
-check_version() {
-    if command -v opencode >/dev/null 2>&1; then
-        opencode_path=$(which opencode)
+download_file() {
+    local url=$1
+    local output=$2
 
-        ## Check the installed version
-        installed_version=$(opencode --version 2>/dev/null || echo "")
-
-        if [[ "$installed_version" != "$specific_version" ]]; then
-            print_message info "${MUTED}Installed version: ${NC}$installed_version."
+    if command -v curl >/dev/null 2>&1; then
+        if [ "$output" = "-" ]; then
+            curl -fsSL "$url"
         else
-            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
+            curl -fsSL "$url" -o "$output"
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if [ "$output" = "-" ]; then
+            wget --quiet -O- "$url"
+        else
+            wget --quiet "$url" -O "$output"
+        fi
+    else
+        print_message error "Error: neither curl nor wget found"
+        exit 1
+    fi
+}
+
+# ============================================================
+# Platform detection (shared by all install steps)
+# ============================================================
+
+detect_platform() {
+    local raw_os
+    raw_os=$(uname -s)
+
+    case "$raw_os" in
+        Darwin*)               OS="darwin";  OS_SUP="macos" ;;
+        Linux*)                OS="linux";   OS_SUP="linux" ;;
+        MINGW*|MSYS*|CYGWIN*) OS="windows"; OS_SUP="windows" ;;
+        *)
+            print_message error "Unsupported OS: $raw_os"
+            exit 1
+            ;;
+    esac
+
+    local raw_arch
+    raw_arch=$(uname -m)
+    case "$raw_arch" in
+        aarch64|arm64) ARCH="arm64"; ARCH_SUP="aarch64" ;;
+        x86_64|amd64)  ARCH="x64";   ARCH_SUP="x86_64" ;;
+        *)
+            print_message error "Unsupported architecture: $raw_arch"
+            exit 1
+            ;;
+    esac
+
+    # Rosetta detection on macOS
+    if [ "$OS" = "darwin" ] && [ "$ARCH" = "x64" ]; then
+        local rosetta_flag
+        rosetta_flag=$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)
+        if [ "$rosetta_flag" = "1" ]; then
+            ARCH="arm64"
+            ARCH_SUP="aarch64"
+        fi
+    fi
+
+    case "${OS}-${ARCH}" in
+        linux-x64|linux-arm64|darwin-x64|darwin-arm64|windows-x64) ;;
+        *)
+            print_message error "Unsupported OS/Arch: $OS/$ARCH"
+            exit 1
+            ;;
+    esac
+
+    # musl detection
+    if [ "$OS" = "linux" ]; then
+        if [ -f /etc/alpine-release ]; then
+            IS_MUSL=true
+        elif command -v ldd >/dev/null 2>&1; then
+            if ldd --version 2>&1 | grep -qi musl; then
+                IS_MUSL=true
+            fi
+        fi
+    fi
+
+    # AVX2 / baseline detection
+    if [ "$ARCH" = "x64" ]; then
+        if [ "$OS" = "linux" ]; then
+            if ! grep -qwi avx2 /proc/cpuinfo 2>/dev/null; then
+                NEEDS_BASELINE=true
+            fi
+        elif [ "$OS" = "darwin" ]; then
+            local avx2
+            avx2=$(sysctl -n hw.optional.avx2_0 2>/dev/null || echo 0)
+            [ "$avx2" != "1" ] && NEEDS_BASELINE=true
+        elif [ "$OS" = "windows" ]; then
+            local ps_check out
+            ps_check="(Add-Type -MemberDefinition \"[DllImport(\"\"kernel32.dll\"\")] public static extern bool IsProcessorFeaturePresent(int ProcessorFeature);\" -Name Kernel32 -Namespace Win32 -PassThru)::IsProcessorFeaturePresent(40)"
+            out=""
+            if command -v powershell.exe >/dev/null 2>&1; then
+                out=$(powershell.exe -NoProfile -NonInteractive -Command "$ps_check" 2>/dev/null || true)
+            elif command -v pwsh >/dev/null 2>&1; then
+                out=$(pwsh -NoProfile -NonInteractive -Command "$ps_check" 2>/dev/null || true)
+            fi
+            out=$(echo "$out" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+            [ "$out" != "true" ] && [ "$out" != "1" ] && NEEDS_BASELINE=true
+        fi
+    fi
+
+    if [ "$OS" = "windows" ]; then
+        SUP_BIN="sup.exe"
+        SOMACODE_BIN="${APP}.exe"
+    else
+        SUP_BIN="sup"
+        SOMACODE_BIN="${APP}"
+    fi
+
+    printf 'Detected platform: %s-%s\n' "$OS" "$ARCH"
+}
+
+# ============================================================
+# STEP 1: Install sup
+# ============================================================
+
+verify_sup_sha256() {
+    local sup_tmp=$1 sup_asset=$2 sup_tag=$3
+
+    local sums_url="${SUP_RELEASES_URL}/download/${sup_tag}/SHA256SUMS"
+    local sums_file="${sup_tmp}/SHA256SUMS"
+
+    if ! download_file "$sums_url" "$sums_file" 2>/dev/null; then
+        print_message error "Error: could not download SHA256SUMS for sup"
+        printf '  To skip verification: --skip-verify\n'
+        exit 1
+    fi
+
+    if [ ! -s "$sums_file" ]; then
+        print_message error "Error: SHA256SUMS is empty or missing"
+        printf '  To skip verification: --skip-verify\n'
+        exit 1
+    fi
+
+    local expected
+    expected=$(awk -v asset="$sup_asset" '$2 == asset { print $1 }' "$sums_file")
+    if [ -z "$expected" ]; then
+        print_message error "Error: no SHA256 entry for ${sup_asset}"
+        printf '  To skip verification: --skip-verify\n'
+        exit 1
+    fi
+
+    local actual
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual=$(sha256sum "${sup_tmp}/${sup_asset}" | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+        actual=$(shasum -a 256 "${sup_tmp}/${sup_asset}" | awk '{print $1}')
+    else
+        print_message error "Error: no sha256sum or shasum found"
+        printf '  To skip verification: --skip-verify\n'
+        exit 1
+    fi
+
+    if [ "$actual" = "$expected" ]; then
+        printf '  %bSHA256 verified ✓%b\n' "${GREEN}" "${NC}"
+    else
+        printf '%bError: SHA256 mismatch!%b\n' "${RED}" "${NC}"
+        printf '  expected: %s\n' "$expected"
+        printf '  actual:   %s\n' "$actual"
+        exit 1
+    fi
+}
+
+install_sup() {
+    printf '\n%b[1/3] Installing sup (SOMA toolchain installer)...%b\n' "${CYAN}" "${NC}"
+
+    printf 'Finding latest sup release...\n'
+    local sup_tag
+    sup_tag=$(download_file "https://api.github.com/repos/${SUP_REPO}/releases/latest" - 2>/dev/null \
+        | grep '"tag_name"' \
+        | head -1 \
+        | sed 's/.*: *"//;s/".*//')
+
+    if [ -z "${sup_tag:-}" ]; then
+        print_message error "Error: could not determine latest sup release tag"
+        exit 1
+    fi
+    printf 'Latest sup release: %s\n' "$sup_tag"
+
+    mkdir -p "$SUP_INSTALL_DIR"
+
+    local sup_asset
+    if [ "$OS" = "windows" ]; then
+        sup_asset="sup-${OS_SUP}-${ARCH_SUP}.zip"
+    else
+        sup_asset="sup-${OS_SUP}-${ARCH_SUP}.tar.gz"
+    fi
+    local sup_url="${SUP_RELEASES_URL}/download/${sup_tag}/${sup_asset}"
+
+    local sup_tmp
+    sup_tmp=$(mktemp -d 2>/dev/null || mktemp -d -t sup.XXXXXX) || {
+        print_message error "Error: failed to create temporary directory"
+        exit 1
+    }
+    trap 'rm -rf "$sup_tmp"' EXIT HUP INT TERM
+
+    printf 'Downloading %s...\n' "$sup_asset"
+    download_file "$sup_url" "${sup_tmp}/${sup_asset}"
+
+    if [ "$skip_verify" = "false" ] && [ "${SUP_SKIP_VERIFY:-0}" != "1" ]; then
+        verify_sup_sha256 "$sup_tmp" "$sup_asset" "$sup_tag"
+    else
+        printf '%bWarning: skipping checksum verification%b\n' "${YELLOW}" "${NC}"
+    fi
+
+    printf 'Extracting sup...\n'
+    if [ "$OS" = "windows" ]; then
+        unzip -q "${sup_tmp}/${sup_asset}" -d "${sup_tmp}"
+    else
+        tar xzf "${sup_tmp}/${sup_asset}" -C "${sup_tmp}"
+    fi
+
+    if [ ! -f "${sup_tmp}/${SUP_BIN}" ]; then
+        print_message error "Error: ${SUP_BIN} not found in archive"
+        exit 1
+    fi
+
+    mv "${sup_tmp}/${SUP_BIN}" "${SUP_INSTALL_DIR}/${SUP_BIN}"
+    chmod +x "${SUP_INSTALL_DIR}/${SUP_BIN}"
+    rm -rf "$sup_tmp"
+    trap - EXIT HUP INT TERM
+
+    printf '%bsup installed to %s/%s%b\n' "${GREEN}" "$SUP_INSTALL_DIR" "$SUP_BIN" "${NC}"
+}
+
+# ============================================================
+# STEP 2: Install soma via sup
+# ============================================================
+
+install_soma_via_sup() {
+    printf '\n%b[2/3] Installing soma via sup...%b\n' "${CYAN}" "${NC}"
+
+    local sup_cmd="${SUP_INSTALL_DIR}/${SUP_BIN}"
+    if [ ! -x "$sup_cmd" ]; then
+        if command -v sup >/dev/null 2>&1; then
+            sup_cmd="sup"
+        else
+            print_message error "Error: sup not found — installation may have failed"
+            exit 1
+        fi
+    fi
+
+    printf 'Running: %s install soma\n' "$sup_cmd"
+    "$sup_cmd" install soma
+
+    printf '%bsoma installed successfully%b\n' "${GREEN}" "${NC}"
+}
+
+# ============================================================
+# STEP 3: Install somacode
+# ============================================================
+
+check_somacode_version() {
+    if command -v somacode >/dev/null 2>&1; then
+        local installed_version
+        installed_version=$(somacode --version 2>/dev/null || echo "")
+        if [ -n "$installed_version" ] && [ "$installed_version" = "$requested_version" ]; then
+            echo -e "${MUTED}Version ${NC}${requested_version}${MUTED} already installed${NC}"
             exit 0
+        elif [ -n "$installed_version" ]; then
+            echo -e "${MUTED}Installed version: ${NC}${installed_version}"
         fi
     fi
 }
@@ -240,7 +382,8 @@ unbuffered_sed() {
     elif echo | sed -l -e "" >/dev/null 2>&1; then
         sed -nl "$@"
     else
-        local pad="$(printf "\n%512s" "")"
+        local pad
+        pad="$(printf "\n%512s" "")"
         sed -ne "s/$/\\${pad}/" "$@"
     fi
 }
@@ -256,9 +399,10 @@ print_progress() {
     local on=$(( percent * width / 100 ))
     local off=$(( width - on ))
 
-    local filled=$(printf "%*s" "$on" "")
+    local filled empty
+    filled=$(printf "%*s" "$on" "")
     filled=${filled// /■}
-    local empty=$(printf "%*s" "$off" "")
+    empty=$(printf "%*s" "$off" "")
     empty=${empty// /･}
 
     printf "\r${ORANGE}%s%s %3d%%${NC}" "$filled" "$empty" "$percent" >&4
@@ -275,15 +419,12 @@ download_with_progress() {
     fi
 
     local tmp_dir=${TMPDIR:-/tmp}
-    local basename="${tmp_dir}/opencode_install_$$"
-    local tracefile="${basename}.trace"
+    local tracefile="${tmp_dir}/somacode_install_$$.trace"
 
     rm -f "$tracefile"
     mkfifo "$tracefile"
 
-    # Hide cursor
     printf "\033[?25l" >&4
-
     trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
 
     (
@@ -297,8 +438,7 @@ download_with_progress() {
         -e '/^<= recv data/p' \
         "$tracefile" | \
     {
-        local length=0
-        local bytes=0
+        local length=0 bytes=0
 
         while IFS=" " read -r -a line; do
             [ "${#line[@]}" -lt 2 ] && continue
@@ -311,9 +451,7 @@ download_with_progress() {
             elif [ "$tag" = "<= recv" ]; then
                 local size="${line[3]}"
                 bytes=$(( bytes + size ))
-                if [ "$length" -gt 0 ]; then
-                    print_progress "$bytes" "$length"
-                fi
+                [ "$length" -gt 0 ] && print_progress "$bytes" "$length"
             fi
         done
     }
@@ -324,137 +462,291 @@ download_with_progress() {
     return $ret
 }
 
-download_and_install() {
-    print_message info "\n${MUTED}Installing ${NC}opencode ${MUTED}version: ${NC}$specific_version"
-    local tmp_dir="${TMPDIR:-/tmp}/opencode_install_$$"
+install_somacode() {
+    printf '\n%b[3/3] Installing somacode...%b\n' "${CYAN}" "${NC}"
+    mkdir -p "$SOMACODE_INSTALL_DIR"
+
+    if [ -n "$binary_path" ]; then
+        if [ ! -f "$binary_path" ]; then
+            print_message error "Error: Binary not found at ${binary_path}"
+            exit 1
+        fi
+        echo -e "\n${MUTED}Installing ${NC}somacode ${MUTED}from: ${NC}${binary_path}"
+        cp "$binary_path" "${SOMACODE_INSTALL_DIR}/${SOMACODE_BIN}"
+        chmod 755 "${SOMACODE_INSTALL_DIR}/${SOMACODE_BIN}"
+        return
+    fi
+
+    check_somacode_version
+
+    # Build target string
+    local target="${OS}-${ARCH}"
+    [ "$NEEDS_BASELINE" = "true" ] && target="${target}-baseline"
+    [ "$IS_MUSL" = "true" ]        && target="${target}-musl"
+
+    local archive_ext=".zip"
+    [ "$OS" = "linux" ] && archive_ext=".tar.gz"
+
+    local filename="${APP}-${target}${archive_ext}"
+
+    if [ "$OS" = "linux" ]; then
+        if ! command -v tar >/dev/null 2>&1; then
+            print_message error "Error: 'tar' is required but not installed."
+            exit 1
+        fi
+    else
+        if ! command -v unzip >/dev/null 2>&1; then
+            print_message error "Error: 'unzip' is required but not installed."
+            exit 1
+        fi
+    fi
+
+    local url specific_version
+    if [ -z "$requested_version" ]; then
+        url="${SOMACODE_RELEASES_URL}/latest/download/${filename}"
+        specific_version=$(download_file \
+            "https://api.github.com/repos/${SOMACODE_REPO}/releases/latest" - \
+            | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+        if [ -z "${specific_version:-}" ]; then
+            print_message error "Failed to fetch somacode version information"
+            exit 1
+        fi
+    else
+        requested_version="${requested_version#v}"
+        url="${SOMACODE_RELEASES_URL}/download/v${requested_version}/${filename}"
+        specific_version="$requested_version"
+
+        local http_status
+        http_status=$(curl -sI -o /dev/null -w "%{http_code}" \
+            "${SOMACODE_RELEASES_URL}/tag/v${requested_version}")
+        if [ "$http_status" = "404" ]; then
+            print_message error "Error: Release v${requested_version} not found"
+            echo -e "${MUTED}Available releases: ${SOMACODE_RELEASES_URL}${NC}"
+            exit 1
+        fi
+    fi
+
+    echo -e "\n${MUTED}Installing ${NC}somacode ${MUTED}version: ${NC}${specific_version}"
+    local tmp_dir="${TMPDIR:-/tmp}/somacode_install_$$"
     mkdir -p "$tmp_dir"
 
-    if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
-        # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails
+    if [[ "$OS" == "windows" ]] || ! [ -t 2 ] || \
+       ! download_with_progress "$url" "$tmp_dir/$filename"; then
         curl -# -L -o "$tmp_dir/$filename" "$url"
     fi
 
-    if [ "$os" = "linux" ]; then
+    if [ "$OS" = "linux" ]; then
         tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
     else
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
 
-    mv "$tmp_dir/opencode" "$INSTALL_DIR"
-    chmod 755 "${INSTALL_DIR}/opencode"
+    if [ ! -f "${tmp_dir}/${SOMACODE_BIN}" ]; then
+        print_message error "Error: ${SOMACODE_BIN} not found in archive"
+        exit 1
+    fi
+
+    mv "${tmp_dir}/${SOMACODE_BIN}" "${SOMACODE_INSTALL_DIR}/${SOMACODE_BIN}"
+    chmod 755 "${SOMACODE_INSTALL_DIR}/${SOMACODE_BIN}"
     rm -rf "$tmp_dir"
+
+    printf '%bsomacode installed to %s/%s%b\n' "${GREEN}" \
+        "$SOMACODE_INSTALL_DIR" "$SOMACODE_BIN" "${NC}"
 }
 
-install_from_binary() {
-    print_message info "\n${MUTED}Installing ${NC}opencode ${MUTED}from: ${NC}$binary_path"
-    cp "$binary_path" "${INSTALL_DIR}/opencode"
-    chmod 755 "${INSTALL_DIR}/opencode"
+# ============================================================
+# PATH setup
+# ============================================================
+
+add_to_windows_path() {
+    local dir_unix=$1
+    local dir_win
+
+    if command -v cygpath >/dev/null 2>&1; then
+        dir_win=$(cygpath -w "$dir_unix")
+    else
+        dir_win=$(echo "$dir_unix" | sed -E 's|^/([a-zA-Z])/|\1:\\|; s|/|\\|g')
+    fi
+
+    local ps_runner=""
+    if command -v powershell.exe >/dev/null 2>&1; then
+        ps_runner="powershell.exe"
+    elif command -v pwsh >/dev/null 2>&1; then
+        ps_runner="pwsh"
+    else
+        print_message warning "PowerShell not found. Add manually to Windows PATH:"
+        print_message info "  $dir_win"
+        return
+    fi
+
+    local result
+    result=$("$ps_runner" -NoProfile -NonInteractive -Command "
+        \$new = '$dir_win'
+        \$user = [Environment]::GetEnvironmentVariable('PATH', 'User')
+        if (-not \$user) { \$user = '' }
+        \$parts = @(\$user -split ';' | Where-Object { \$_ -ne '' })
+        if (\$parts -notcontains \$new) {
+            \$trimmed = \$user.TrimEnd(';')
+            \$updated = if (\$trimmed) { \"\$trimmed;\$new\" } else { \$new }
+            [Environment]::SetEnvironmentVariable('PATH', \$updated, 'User')
+            'added'
+        } else {
+            'exists'
+        }
+    " 2>/dev/null | tr -d '\r\n' || true)
+
+    case "$result" in
+        added)  printf '%bAdded to Windows User PATH: %b%s\n' "${MUTED}" "${NC}" "$dir_win" ;;
+        exists) printf '%bAlready in Windows User PATH: %b%s\n' "${MUTED}" "${NC}" "$dir_win" ;;
+        *)
+            printf '%bCould not update Windows PATH automatically. Add manually:%b\n' "${YELLOW}" "${NC}"
+            printf '  %s\n' "$dir_win"
+            ;;
+    esac
 }
-
-if [ -n "$binary_path" ]; then
-    install_from_binary
-else
-    check_version
-    download_and_install
-fi
-
 
 add_to_path() {
     local config_file=$1
     local command=$2
 
     if grep -Fxq "$command" "$config_file"; then
-        print_message info "Command already exists in $config_file, skipping write."
+        print_message info "${MUTED}Already in ${config_file}, skipping.${NC}"
     elif [[ -w $config_file ]]; then
-        echo -e "\n# opencode" >> "$config_file"
+        echo -e "\n# somacode" >> "$config_file"
         echo "$command" >> "$config_file"
-        print_message info "${MUTED}Successfully added ${NC}opencode ${MUTED}to \$PATH in ${NC}$config_file"
+        echo -e "${MUTED}Added somacode to \$PATH in ${NC}${config_file}"
     else
-        print_message warning "Manually add the directory to $config_file (or similar):"
+        print_message warning "Manually add to $config_file:"
         print_message info "  $command"
     fi
 }
 
-XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
-
-current_shell=$(basename "$SHELL")
-case $current_shell in
-    fish)
-        config_files="$HOME/.config/fish/config.fish"
-    ;;
-    zsh)
-        config_files="${ZDOTDIR:-$HOME}/.zshrc ${ZDOTDIR:-$HOME}/.zshenv $XDG_CONFIG_HOME/zsh/.zshrc $XDG_CONFIG_HOME/zsh/.zshenv"
-    ;;
-    bash)
-        config_files="$HOME/.bashrc $HOME/.bash_profile $HOME/.profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
-    ;;
-    ash)
-        config_files="$HOME/.ashrc $HOME/.profile /etc/profile"
-    ;;
-    sh)
-        config_files="$HOME/.ashrc $HOME/.profile /etc/profile"
-    ;;
-    *)
-        # Default case if none of the above matches
-        config_files="$HOME/.bashrc $HOME/.bash_profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
-    ;;
-esac
-
-if [[ "$no_modify_path" != "true" ]]; then
-    config_file=""
-    for file in $config_files; do
-        if [[ -f $file ]]; then
-            config_file=$file
-            break
+setup_path() {
+    if [ "$OS" = "windows" ]; then
+        if [[ "$no_modify_path" != "true" ]]; then
+            add_to_windows_path "$SUP_INSTALL_DIR"
+            add_to_windows_path "$SOMACODE_INSTALL_DIR"
+            echo -e "${MUTED}Restart your terminal for PATH changes to take effect.${NC}"
         fi
-    done
 
-    if [[ -z $config_file ]]; then
-        print_message warning "No config file found for $current_shell. You may need to manually add to PATH:"
-        print_message info "  export PATH=$INSTALL_DIR:\$PATH"
-    elif [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        case $current_shell in
-            fish)
-                add_to_path "$config_file" "fish_add_path $INSTALL_DIR"
-            ;;
-            zsh)
-                add_to_path "$config_file" "export PATH=$INSTALL_DIR:\$PATH"
-            ;;
-            bash)
-                add_to_path "$config_file" "export PATH=$INSTALL_DIR:\$PATH"
-            ;;
-            ash)
-                add_to_path "$config_file" "export PATH=$INSTALL_DIR:\$PATH"
-            ;;
-            sh)
-                add_to_path "$config_file" "export PATH=$INSTALL_DIR:\$PATH"
-            ;;
-            *)
-                export PATH=$INSTALL_DIR:$PATH
-                print_message warning "Manually add the directory to $config_file (or similar):"
-                print_message info "  export PATH=$INSTALL_DIR:\$PATH"
-            ;;
-        esac
+        if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" = "true" ]; then
+            echo "$SOMACODE_INSTALL_DIR" >> "$GITHUB_PATH"
+            echo "$SUP_INSTALL_DIR"      >> "$GITHUB_PATH"
+            print_message info "Added install dirs to \$GITHUB_PATH"
+        fi
+        return
     fi
-fi
 
-if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" == "true" ]; then
-    echo "$INSTALL_DIR" >> $GITHUB_PATH
-    print_message info "Added $INSTALL_DIR to \$GITHUB_PATH"
-fi
+    local XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+    local current_shell
+    current_shell=$(basename "$SHELL")
 
-echo -e ""
-echo -e "${MUTED}                    ${NC}             ▄     "
-echo -e "${MUTED}█▀▀█ █▀▀█ █▀▀█ █▀▀▄ ${NC}█▀▀▀ █▀▀█ █▀▀█ █▀▀█"
-echo -e "${MUTED}█░░█ █░░█ █▀▀▀ █░░█ ${NC}█░░░ █░░█ █░░█ █▀▀▀"
-echo -e "${MUTED}▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ ${NC}▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"
-echo -e ""
-echo -e ""
-echo -e "${MUTED}OpenCode includes free models, to start:${NC}"
-echo -e ""
-echo -e "cd <project>  ${MUTED}# Open directory${NC}"
-echo -e "opencode      ${MUTED}# Run command${NC}"
-echo -e ""
-echo -e "${MUTED}For more information visit ${NC}https://opencode.ai/docs"
-echo -e ""
-echo -e ""
+    local config_files
+    case $current_shell in
+        fish)
+            config_files="$HOME/.config/fish/config.fish"
+            ;;
+        zsh)
+            config_files="${ZDOTDIR:-$HOME}/.zshrc ${ZDOTDIR:-$HOME}/.zshenv \
+                $XDG_CONFIG_HOME/zsh/.zshrc $XDG_CONFIG_HOME/zsh/.zshenv"
+            ;;
+        bash)
+            config_files="$HOME/.bashrc $HOME/.bash_profile $HOME/.profile \
+                $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
+            ;;
+        ash|sh)
+            config_files="$HOME/.ashrc $HOME/.profile /etc/profile"
+            ;;
+        *)
+            config_files="$HOME/.bashrc $HOME/.bash_profile \
+                $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
+            ;;
+    esac
+
+    if [[ "$no_modify_path" != "true" ]]; then
+        local config_file=""
+        for file in $config_files; do
+            if [[ -f $file ]]; then
+                config_file=$file
+                break
+            fi
+        done
+
+        if [[ -z $config_file ]]; then
+            print_message warning "No config file found for $current_shell. Add manually:"
+            print_message info "  export PATH=$SUP_INSTALL_DIR:$SOMACODE_INSTALL_DIR:\$PATH"
+        else
+            for install_dir in "$SUP_INSTALL_DIR" "$SOMACODE_INSTALL_DIR"; do
+                [[ ":$PATH:" == *":$install_dir:"* ]] && continue
+                case $current_shell in
+                    fish)
+                        add_to_path "$config_file" "fish_add_path $install_dir"
+                        ;;
+                    zsh|bash|ash|sh)
+                        add_to_path "$config_file" "export PATH=$install_dir:\$PATH"
+                        ;;
+                    *)
+                        export PATH=$install_dir:$PATH
+                        print_message warning "Manually add to $config_file:"
+                        print_message info "  export PATH=$install_dir:\$PATH"
+                        ;;
+                esac
+            done
+        fi
+    fi
+
+    if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" = "true" ]; then
+        echo "$SOMACODE_INSTALL_DIR" >> "$GITHUB_PATH"
+        echo "$SUP_INSTALL_DIR"      >> "$GITHUB_PATH"
+        print_message info "Added install dirs to \$GITHUB_PATH"
+    fi
+}
+
+# ============================================================
+# Main
+# ============================================================
+
+main() {
+    printf '%bSomaCode Installer%b\n\n' "${CYAN}" "${NC}"
+
+    detect_platform
+
+    # Step 1: install sup (skip if already installed)
+    if command -v "${SUP_BIN}" >/dev/null 2>&1 || \
+       [ -x "${SUP_INSTALL_DIR}/${SUP_BIN}" ]; then
+        printf '\n%b[1/3] sup already installed, skipping.%b\n' "${MUTED}" "${NC}"
+        # Point SUP_INSTALL_DIR at wherever sup lives
+        local existing_sup
+        existing_sup=$(command -v "${SUP_BIN}" 2>/dev/null || echo "${SUP_INSTALL_DIR}/${SUP_BIN}")
+        SUP_INSTALL_DIR=$(dirname "$existing_sup")
+    else
+        install_sup
+    fi
+
+    # Step 2: install soma via sup
+    install_soma_via_sup
+
+    # Step 3: install somacode
+    # install_somacode
+
+    # PATH setup
+    setup_path
+
+    echo -e ""
+    echo -e "${MUTED}███████╗ ██████╗ ███╗   ███╗ █████╗ ${NC} ██████╗ ██████╗ ██████╗ ███████╗"
+    echo -e "${MUTED}██╔════╝██╔═══██╗████╗ ████║██╔══██╗${NC}██╔════╝██╔═══██╗██╔══██╗██╔════╝"
+    echo -e "${MUTED}███████╗██║   ██║██╔████╔██║███████║${NC}██║     ██║   ██║██║  ██║█████╗  "
+    echo -e "${MUTED}╚════██║██║   ██║██║╚██╔╝██║██╔══██║${NC}██║     ██║   ██║██║  ██║██╔══╝  "
+    echo -e "${MUTED}███████║╚██████╔╝██║ ╚═╝ ██║██║  ██║${NC}╚██████╗╚██████╔╝██████╔╝███████╗"
+    echo -e "${MUTED}╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝${NC} ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝"
+    echo -e ""
+    echo -e "${MUTED}SomaCode is ready. To get started:${NC}"
+    echo -e ""
+    echo -e "cd <project>  ${MUTED}# Open your project directory${NC}"
+    echo -e "somacode      ${MUTED}# Run somacode${NC}"
+    echo -e ""
+    echo -e "${MUTED}For more information visit ${NC}https://somacode.ai/docs"
+    echo -e ""
+}
+
+main "$@"
