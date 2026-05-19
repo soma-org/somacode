@@ -1,4 +1,4 @@
-export const DEFAULT_ONRAMP_BASE_URL = "http://192.168.5.130:3000"
+export const DEFAULT_ONRAMP_BASE_URL = "http://95.217.102.55:3010"
 
 export type OnrampStatus =
   | "initialized"

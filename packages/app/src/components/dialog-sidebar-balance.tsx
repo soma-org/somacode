@@ -23,7 +23,7 @@ export const DialogSidebarBalance: Component = () => {
   )
 
   const onBuyUsdc = () => {
-    dialog.show(() => <DialogOnrampCheckout />)
+    dialog.show(() => <DialogOnrampCheckout />, { dismissable: false })
   }
 
   return (

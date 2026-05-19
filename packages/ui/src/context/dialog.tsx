@@ -27,6 +27,11 @@ type Active = {
 
 const Context = createContext<ReturnType<typeof init>>()
 
+type ShowOptions = {
+  onClose?: () => void
+  dismissable?: boolean
+}
+
 function init() {
   const [active, setActive] = createSignal<Active | undefined>()
   const timer = { current: undefined as ReturnType<typeof setTimeout> | undefined }
@@ -72,7 +77,9 @@ function init() {
     makeEventListener(window, "keydown", onKeyDown, { capture: true })
   })
 
-  const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
+  const show = (element: DialogElement, owner: Owner, options?: ShowOptions) => {
+    const onClose = options?.onClose
+    const dismissable = options?.dismissable !== false
     // Immediately dispose any existing dialog when showing a new one
     const current = active()
     if (current) {
@@ -101,11 +108,15 @@ function init() {
             open={!closing()}
             onOpenChange={(open: boolean) => {
               if (open) return
+              if (!dismissable) return
               close()
             }}
           >
             <Kobalte.Portal>
-              <Kobalte.Overlay data-component="dialog-overlay" onClick={close} />
+              <Kobalte.Overlay
+                data-component="dialog-overlay"
+                onClick={dismissable ? close : undefined}
+              />
               {element()}
             </Kobalte.Portal>
           </Kobalte>
@@ -152,9 +163,13 @@ export function useDialog() {
     get active() {
       return ctx.active
     },
-    show(element: DialogElement, onClose?: () => void) {
+    show(element: DialogElement, optionsOrOnClose?: ShowOptions | (() => void)) {
       const base = ctx.active?.owner ?? owner
-      ctx.show(element, base, onClose)
+      const options =
+        typeof optionsOrOnClose === "function"
+          ? { onClose: optionsOrOnClose }
+          : optionsOrOnClose
+      ctx.show(element, base, options)
     },
     close() {
       ctx.close()
