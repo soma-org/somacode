@@ -40,6 +40,7 @@ import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "@tui/component/dialog-agent"
 import { DialogSessionList } from "@tui/component/dialog-session-list"
 import { DialogConsoleOrg } from "@tui/component/dialog-console-org"
+import { DialogOnrampCheckout } from "@tui/component/dialog-onramp-checkout"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
@@ -470,6 +471,16 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         slashName: "models",
         run: () => {
           dialog.replace(() => <DialogModel />)
+        },
+      },
+      {
+        name: "balance.buy_usdc",
+        title: "Buy USDC",
+        category: "Account",
+        slashName: "buy-usdc",
+        desc: "Top up USDC via Stripe Crypto onramp",
+        run: () => {
+          dialog.replace(() => <DialogOnrampCheckout />)
         },
       },
       {
