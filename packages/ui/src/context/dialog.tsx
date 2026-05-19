@@ -32,6 +32,13 @@ type ShowOptions = {
   dismissable?: boolean
 }
 
+type DialogConfig = { dismissable: boolean }
+const ConfigContext = createContext<DialogConfig>({ dismissable: true })
+
+export function useDialogConfig(): DialogConfig {
+  return useContext(ConfigContext) ?? { dismissable: true }
+}
+
 function init() {
   const [active, setActive] = createSignal<Active | undefined>()
   const timer = { current: undefined as ReturnType<typeof setTimeout> | undefined }
@@ -103,23 +110,24 @@ function init() {
         const [closing, setClosingSignal] = createSignal(false)
         setClosing = setClosingSignal
         return (
-          <Kobalte
-            modal
-            open={!closing()}
-            onOpenChange={(open: boolean) => {
-              if (open) return
-              if (!dismissable) return
-              close()
-            }}
-          >
-            <Kobalte.Portal>
-              <Kobalte.Overlay
-                data-component="dialog-overlay"
-                onClick={dismissable ? close : undefined}
-              />
-              {element()}
-            </Kobalte.Portal>
-          </Kobalte>
+          <ConfigContext.Provider value={{ dismissable }}>
+            <Kobalte
+              modal
+              open={!closing()}
+              onOpenChange={(open: boolean) => {
+                if (open) return
+                close()
+              }}
+            >
+              <Kobalte.Portal>
+                <Kobalte.Overlay
+                  data-component="dialog-overlay"
+                  onClick={dismissable ? close : undefined}
+                />
+                {element()}
+              </Kobalte.Portal>
+            </Kobalte>
+          </ConfigContext.Provider>
         )
       }),
     )

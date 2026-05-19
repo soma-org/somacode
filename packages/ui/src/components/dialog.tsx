@@ -1,5 +1,6 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { ComponentProps, JSXElement, Match, ParentProps, Show, Switch } from "solid-js"
+import { useDialogConfig } from "../context/dialog"
 import { useI18n } from "../context/i18n"
 import { IconButton } from "./icon-button"
 
@@ -16,6 +17,7 @@ export interface DialogProps extends ParentProps {
 
 export function Dialog(props: DialogProps) {
   const i18n = useI18n()
+  const config = useDialogConfig()
   return (
     <div
       data-component="dialog"
@@ -30,6 +32,12 @@ export function Dialog(props: DialogProps) {
           classList={{
             ...props.classList,
             [props.class ?? ""]: !!props.class,
+          }}
+          onPointerDownOutside={(e) => {
+            if (!config.dismissable) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (!config.dismissable) e.preventDefault()
           }}
           onOpenAutoFocus={(e) => {
             const target = e.currentTarget as HTMLElement | null
