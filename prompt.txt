@@ -1,0 +1,96 @@
+I need to implement a Stripe crypto onramp payment flow using a custom
+  backend. Here's the full context:
+
+  Backend base URL: http://192.168.5.130:3000
+
+  Endpoints:
+
+  POST /api/create-session
+  - Request: { "wallet_address": "0x..." }
+  - Response: { "session_id": "cos_...", "redirect_url":
+  "https://crypto.link.com/...", "client_secret": "..." }
+
+  GET /api/events — Global SSE stream (use this one)
+  - No parameters needed
+  - Receives ALL session events from any user
+  - Emits SSE events of type status
+
+  GET /api/events/{session_id} — Per-session SSE stream (alternative, only
+  needed if you want to scope to one session)
+
+  SSE event data shape:
+  {
+    "status": "fulfillment_complete",
+    "session": {
+      "id": "cos_...",
+      "status": "fulfillment_complete",
+      "transaction_details": {
+        "source_currency": "usd",
+        "source_amount": "10.50",
+        "destination_currency": "usdc",
+        "destination_network": "base",
+        "destination_amount": "10.00",
+        "wallet_address": "0x..."
+      }
+    }
+  }
+
+  Possible status values in order: initialized → requires_payment →
+  fulfillment_processing → fulfillment_complete or rejected
+
+  Flow to implement:
+  1. Open the SSE connection to GET /api/events on component mount — keep it
+  open in the background
+  2. When the user wants to buy crypto, call POST /api/create-session with their
+   wallet address to get a redirect_url
+  3. Open redirect_url in a new browser tab — this is the Stripe hosted page
+  where the user buys USDC on Base with USD via credit card
+  4. Listen on the SSE stream for a status event where session.id matches the
+  session_id from step 2
+  5. Reflect intermediate statuses in the UI (requires_payment → "Waiting for
+  payment...", fulfillment_processing → "Processing...")
+  6. When status === "fulfillment_complete", show a success state with details
+  from session.transaction_details
+  7. When status === "rejected", show a failure state
+  8. Close the SSE connection on component unmount
+
+  Requirements:
+  - The user's wallet address must be known before starting — get it from
+  wherever the app already stores it
+  - Do not call Stripe directly from the frontend — all Stripe communication
+  goes through this backend
+  - Filter incoming SSE events by session.id to match the current user's session
+  - Show meaningful loading states while the Stripe tab is open and while
+  waiting for confirmation
+  - Handle SSE connection errors and drops gracefully
+  fulfillment_processing → fulfillment_complete or rejected
+
+  Flow to implement:
+  1. Open the SSE connection to GET /api/events on component mount — keep it
+  open in the background
+  2. When the user wants to buy crypto, call POST /api/create-session with their
+   wallet address to get a redirect_url
+  3. Open redirect_url in a new browser tab — this is the Stripe hosted page
+  where the user buys USDC on Base with USD via credit card
+  4. Listen on the SSE stream for a status event where session.id matches the
+  session_id from step 2
+  5. Reflect intermediate statuses in the UI (requires_payment → "Waiting for
+  payment...", fulfillment_processing → "Processing...")
+  6. When status === "fulfillment_complete", show a success state with details
+  from session.transaction_details
+  7. When status === "rejected", show a failure state
+  8. Close the SSE connection on component unmount
+
+  Requirements:
+  - The user's wallet address must be known before starting — get it from
+  wherever the app already stores it
+  - Do not call Stripe directly from the frontend — all Stripe communication
+  goes through this backend
+  - Filter incoming SSE events by session.id to match the current user's session
+  - Show meaningful loading states while the Stripe tab is open and while
+  waiting for confirmation
+  - Handle SSE connection errors and drops gracefully
+
+  Please implement this using the patterns and framework already in this
+  codebase. Adapt component structure, state management, and styling to match
+  what already exists in the project.

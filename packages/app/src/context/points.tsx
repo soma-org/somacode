@@ -14,11 +14,17 @@ export const { use: usePoints, provider: PointsProvider } = createSimpleContext(
       name: "opencode.usdc.balance",
       storage,
     })
+    const [walletAddress, setWalletAddress] = makePersisted(createSignal(""), {
+      name: "opencode.wallet.address",
+      storage,
+    })
     return {
       balance,
       setBalance,
       usdcBalance,
       setUsdcBalance,
+      walletAddress,
+      setWalletAddress,
     }
   },
 })

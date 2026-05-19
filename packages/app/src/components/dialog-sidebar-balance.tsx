@@ -1,19 +1,15 @@
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
-import { showToast } from "@opencode-ai/ui/toast"
 import { createMemo, type Component } from "solid-js"
+import { DialogOnrampCheckout } from "@/components/dialog-onramp-checkout"
 import { useLanguage } from "@/context/language"
-import { usePlatform } from "@/context/platform"
 import { usePoints } from "@/context/points"
-import { useStripe } from "@/hooks/use-stripe"
 
 export const DialogSidebarBalance: Component = () => {
   const language = useLanguage()
-  const platform = usePlatform()
   const points = usePoints()
   const dialog = useDialog()
-  const { checkoutPending, buyUsdc } = useStripe()
 
   const formattedPoints = createMemo(() =>
     new Intl.NumberFormat(language.intl()).format(points.balance()),
@@ -26,43 +22,8 @@ export const DialogSidebarBalance: Component = () => {
     }).format(points.usdcBalance()),
   )
 
-  const onBuyUsdc = async () => {
-    const result = await buyUsdc()
-    if (!result.ok) {
-      if (result.reason === "missing_checkout_url") {
-        showToast({
-          variant: "default",
-          title: language.t("sidebar.points.checkoutMissingTitle"),
-          description: language.t("sidebar.points.checkoutMissingDescription"),
-        })
-        return
-      }
-      if (result.reason === "missing_stripe_key") {
-        showToast({
-          variant: "default",
-          title: language.t("sidebar.points.checkoutMissingTitle"),
-          description: language.t("sidebar.points.checkoutMissingStripeKeyDescription"),
-        })
-        return
-      }
-      if (result.reason === "invalid_response") {
-        showToast({
-          variant: "error",
-          title: language.t("sidebar.points.checkoutSessionInvalidTitle"),
-          description: language.t("sidebar.points.checkoutSessionInvalidDescription"),
-        })
-        return
-      }
-      showToast({
-        variant: "error",
-        title: language.t("sidebar.points.checkoutSessionFailedTitle"),
-        description: language.t("sidebar.points.checkoutSessionFailedDescription"),
-      })
-      return
-    }
-
-    platform.openLink(result.redirectUrl)
-    dialog.close()
+  const onBuyUsdc = () => {
+    dialog.show(() => <DialogOnrampCheckout />)
   }
 
   return (
@@ -75,12 +36,7 @@ export const DialogSidebarBalance: Component = () => {
             </div>
             <div class="flex items-center text-[32px] font-medium text-text-strong tabular-nums leading-none">
               {formattedUsdc()}
-              <Button
-                size="large"
-                class="self-start ml-10"
-                disabled={checkoutPending()}
-                onClick={onBuyUsdc}
-              >
+              <Button size="large" class="self-start ml-10" onClick={onBuyUsdc}>
                 {language.t("sidebar.points.buyUsdc")}
               </Button>
             </div>
