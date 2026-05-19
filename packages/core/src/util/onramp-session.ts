@@ -1,5 +1,5 @@
 export const DEFAULT_ONRAMP_BASE_URL = "http://95.217.102.55:3010"
-export const DEFAULT_PAYMENT_GATEWAY_URL = "http://localhost:5173"
+export const DEFAULT_PAYMENT_GATEWAY_URL = "http://localhost:8000"
 
 export type OnrampStatus =
   | "initialized"

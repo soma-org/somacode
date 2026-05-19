@@ -48,7 +48,7 @@ function statusLabel(status: OnrampStatus): string {
 function errorMessage(reason: ErrorReason): string {
   switch (reason) {
     case "missing_gateway_url":
-      return "SOMACODE_PAYMENT_GATEWAY_URL is not configured."
+      return "VITE_SOMACODE_PAYMENT_GATEWAY_URL is not configured."
     case "missing_wallet_address":
       return "Wallet address is required."
     case "stream_lost":
@@ -75,7 +75,7 @@ export function DialogOnrampCheckout() {
   const kv = useKV()
 
   const baseUrl = process.env.SOMACODE_ONRAMP_BASE_URL?.trim() || undefined
-  const gatewayUrl = process.env.SOMACODE_PAYMENT_GATEWAY_URL?.trim() || DEFAULT_PAYMENT_GATEWAY_URL
+  const gatewayUrl = process.env.VITE_SOMACODE_PAYMENT_GATEWAY_URL?.trim() || DEFAULT_PAYMENT_GATEWAY_URL
   const initialWallet = (() => {
     const v = kv.get("wallet_address", "")
     return typeof v === "string" ? v : ""
