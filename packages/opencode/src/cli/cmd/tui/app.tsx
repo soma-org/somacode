@@ -59,7 +59,7 @@ import { fetchBalance } from "@opencode-ai/core/util/balance-query"
 import { fetchSupportedModels } from "@opencode-ai/core/util/models-query"
 import { ensureEvmKeypair } from "./util/evm-keypair"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
-import open from "open"
+import { openUrl } from "./util/open-url"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { TuiConfigProvider, useTuiConfig } from "./context/tui-config"
 import { TuiConfig } from "@/cli/cmd/tui/config/tui"
@@ -644,7 +644,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         name: "docs.open",
         title: "Open docs",
         run: () => {
-          open("https://opencode.ai/docs").catch(() => {})
+          void openUrl(renderer, "https://opencode.ai/docs")
           dialog.clear()
         },
         category: "System",

@@ -1,6 +1,5 @@
 import { TextAttributes } from "@opentui/core"
 import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js"
-import open from "open"
 import {
   authenticateWallet,
   buildPaymentGatewayUrl,
@@ -20,6 +19,8 @@ import { useKV } from "@tui/context/kv"
 import { useBindings } from "../keymap"
 import { Spinner } from "./spinner"
 import { ensureEvmKeypair, signMessage, type EvmKeypair } from "../util/evm-keypair"
+import { openUrl } from "../util/open-url"
+import { useRenderer } from "@opentui/solid"
 
 type ErrorReason = BuildGatewayUrlFailureReason | AuthFailureReason | "stream_lost" | "missing_keypair"
 
@@ -81,6 +82,7 @@ function shortenAddress(value?: string): string {
 
 export function DialogOnrampCheckout() {
   const dialog = useDialog()
+  const renderer = useRenderer()
   const { theme } = useTheme()
   const kv = useKV()
 
@@ -185,12 +187,12 @@ export function DialogOnrampCheckout() {
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized" })
     openStream()
-    open(result.redirectUrl).catch(() => {})
+    void openUrl(renderer, result.redirectUrl)
   }
 
   const reopenCheckout = () => {
     const url = redirectUrl()
-    if (url) open(url).catch(() => {})
+    if (url) void openUrl(renderer, url)
   }
 
   const resetToConfirm = () => {

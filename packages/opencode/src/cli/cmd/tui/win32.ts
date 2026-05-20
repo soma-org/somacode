@@ -10,6 +10,7 @@ const kernel = () =>
     GetConsoleMode: { args: ["ptr", "ptr"], returns: "i32" },
     SetConsoleMode: { args: ["ptr", "u32"], returns: "i32" },
     FlushConsoleInputBuffer: { args: ["ptr"], returns: "i32" },
+    SetConsoleTitleW: { args: ["ptr"], returns: "i32" },
   })
 
 let k32: ReturnType<typeof kernel> | undefined
@@ -51,6 +52,16 @@ export function win32FlushInputBuffer() {
 
   const handle = k32!.symbols.GetStdHandle(STD_INPUT_HANDLE)
   k32!.symbols.FlushConsoleInputBuffer(handle)
+}
+
+/** Restore the host window title after a detached browser launch on Windows. */
+export function win32SetConsoleTitle(title: string) {
+  if (process.platform !== "win32") return
+  if (!title) return
+  if (!load()) return
+
+  const wide = Buffer.from(`${title}\0`, "utf16le")
+  k32!.symbols.SetConsoleTitleW(ptr(wide))
 }
 
 let unhook: (() => void) | undefined
