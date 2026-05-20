@@ -24,6 +24,7 @@
   },
   "main": "./out/main/index.js",
   "dependencies": {
+    "@opencode-ai/core": "workspace:*",
     "effect": "catalog:",
     "electron-context-menu": "4.1.2",
     "electron-log": "^5",
@@ -31,7 +32,8 @@
     "electron-updater": "^6",
     "electron-window-state": "^5.0.3",
     "drizzle-orm": "catalog:",
-    "marked": "^15"
+    "marked": "^15",
+    "viem": "2.50.4"
   },
   "devDependencies": {
     "@actions/artifact": "4.0.0",

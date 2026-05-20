@@ -9,6 +9,22 @@ type OpenFilePickerOptions = { title?: string; multiple?: boolean; accept?: stri
 type SaveFilePickerOptions = { title?: string; defaultPath?: string }
 type UpdateInfo = { updateAvailable: boolean; version?: string }
 
+export type WalletCheckoutFailure =
+  | "unavailable"
+  | "auth_failed"
+  | "network"
+  | "missing_gateway_url"
+  | "missing_intent_id"
+
+export type WalletCheckoutResult =
+  | { ok: true; redirectUrl: string; walletAddress: string }
+  | { ok: false; reason: WalletCheckoutFailure; message?: string }
+
+export type WalletProvider = {
+  /** Start an onramp checkout. The provider handles wallet signin (locally on desktop, via backend on web) and returns the gateway URL to open. */
+  startCheckout(): Promise<WalletCheckoutResult>
+}
+
 export type Platform = {
   /** Platform discriminator */
   platform: "web" | "desktop"
@@ -87,6 +103,9 @@ export type Platform = {
 
   /** Read image from clipboard (desktop only) */
   readClipboardImage?(): Promise<File | null>
+
+  /** Onramp wallet provider — handles wallet signin for the Buy USDC flow */
+  wallet?: WalletProvider
 }
 
 export type DisplayBackend = "auto" | "wayland"

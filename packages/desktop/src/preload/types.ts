@@ -19,6 +19,10 @@ export type WindowConfig = {
   updaterEnabled: boolean
 }
 
+export type WalletCheckoutResult =
+  | { ok: true; redirectUrl: string; walletAddress: string }
+  | { ok: false; reason: string; message?: string }
+
 export type ElectronAPI = {
   killSidecar: () => Promise<void>
   installCli: () => Promise<string>
@@ -76,4 +80,5 @@ export type ElectronAPI = {
   checkUpdate: () => Promise<{ updateAvailable: boolean; version?: string }>
   installUpdate: () => Promise<void>
   setBackgroundColor: (color: string) => Promise<void>
+  walletStartCheckout: () => Promise<WalletCheckoutResult>
 }

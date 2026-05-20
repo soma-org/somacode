@@ -3,32 +3,30 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
-import { TextField } from "@opencode-ai/ui/text-field"
 import { createMemo, createSignal, Match, onCleanup, onMount, Show, Switch, type Component } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { usePoints } from "@/context/points"
+import type { WalletCheckoutFailure } from "@/context/platform"
 import {
-  buildPaymentGatewayUrl,
   isTerminalStatus,
   subscribeToOnrampEvents,
   walletAddressesMatch,
-  type BuildGatewayUrlFailureReason,
   type OnrampStatus,
   type OnrampSubscription,
   type OnrampTransactionDetails,
 } from "@/utils/onramp-session"
 
-type ErrorReason = BuildGatewayUrlFailureReason | "stream_lost"
+type ErrorReason = WalletCheckoutFailure | "stream_lost"
 
 type Phase =
-  | { kind: "input" }
+  | { kind: "loading" }
+  | { kind: "confirm" }
+  | { kind: "authenticating" }
   | { kind: "waiting"; status: OnrampStatus; details?: OnrampTransactionDetails }
   | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
-  | { kind: "error"; reason: ErrorReason }
-
-const WALLET_PATTERN = /^0x[0-9a-fA-F]{40}$/
+  | { kind: "error"; reason: ErrorReason; message?: string }
 
 export const DialogOnrampCheckout: Component = () => {
   const dialog = useDialog()
@@ -36,9 +34,7 @@ export const DialogOnrampCheckout: Component = () => {
   const platform = usePlatform()
   const points = usePoints()
 
-  const [walletInput, setWalletInput] = createSignal(points.walletAddress() ?? "")
-  const [walletError, setWalletError] = createSignal<string | undefined>(undefined)
-  const [phase, setPhase] = createSignal<Phase>({ kind: "input" })
+  const [phase, setPhase] = createSignal<Phase>(platform.wallet ? { kind: "loading" } : { kind: "error", reason: "unavailable" })
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
   const [activeWallet, setActiveWallet] = createSignal<string | undefined>(undefined)
 
@@ -52,12 +48,6 @@ export const DialogOnrampCheckout: Component = () => {
         if (!alive.value) return
         const wallet = activeWallet()
         const eventWallet = event.session?.transaction_details?.wallet_address
-        console.info("[onramp] event", {
-          status: event.status,
-          eventWallet,
-          activeWallet: wallet,
-        })
-
         if (!wallet) return
         if (!walletAddressesMatch(wallet, eventWallet)) return
 
@@ -93,45 +83,28 @@ export const DialogOnrampCheckout: Component = () => {
   }
 
   onMount(() => {
-    console.info("[onramp] dialog mounted")
     openStream()
+    if (!platform.wallet) return
+    setPhase({ kind: "confirm" })
   })
 
   onCleanup(() => {
-    console.info("[onramp] dialog unmounted")
     alive.value = false
     subscription?.close()
     subscription = undefined
   })
 
-  const startCheckout = () => {
-    const current = phase()
-    console.info("[onramp] startCheckout invoked", { phase: current.kind })
-    if (current.kind === "waiting" || current.kind === "success") {
-      console.warn("[onramp] startCheckout ignored — already in", current.kind)
-      return
-    }
-
-    const wallet = walletInput().trim()
-    if (!wallet) {
-      setWalletError(language.t("onramp.wallet.required"))
-      return
-    }
-    if (!WALLET_PATTERN.test(wallet)) {
-      setWalletError(language.t("onramp.wallet.invalid"))
-      return
-    }
-    setWalletError(undefined)
-    points.setWalletAddress(wallet)
-
-    const result = buildPaymentGatewayUrl({ walletAddress: wallet })
+  const startCheckout = async () => {
+    if (!platform.wallet) return
+    setPhase({ kind: "authenticating" })
+    const result = await platform.wallet.startCheckout()
+    if (!alive.value) return
     if (!result.ok) {
-      setPhase({ kind: "error", reason: result.reason })
+      setPhase({ kind: "error", reason: result.reason, message: result.message })
       return
     }
-
-    console.info("[onramp] opening gateway", { url: result.redirectUrl })
-    setActiveWallet(wallet)
+    points.setWalletAddress(result.walletAddress)
+    setActiveWallet(result.walletAddress)
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized" })
     openStream()
@@ -143,10 +116,10 @@ export const DialogOnrampCheckout: Component = () => {
     if (url) platform.openLink(url)
   }
 
-  const resetToInput = () => {
+  const resetToConfirm = () => {
     setActiveWallet(undefined)
     setRedirectUrl(undefined)
-    setPhase({ kind: "input" })
+    setPhase(platform.wallet ? { kind: "confirm" } : { kind: "error", reason: "unavailable" })
   }
 
   const statusLabel = createMemo(() => {
@@ -170,8 +143,14 @@ export const DialogOnrampCheckout: Component = () => {
     switch (current.reason) {
       case "missing_gateway_url":
         return language.t("onramp.error.missing_gateway_url")
-      case "missing_wallet_address":
-        return language.t("onramp.error.missing_wallet_address")
+      case "missing_intent_id":
+        return language.t("onramp.error.missing_intent_id")
+      case "unavailable":
+        return language.t("onramp.error.wallet_unavailable")
+      case "auth_failed":
+        return language.t("onramp.error.auth_failed")
+      case "network":
+        return current.message || language.t("onramp.error.network")
       case "stream_lost":
         return language.t("onramp.error.stream_lost")
       default:
@@ -179,40 +158,43 @@ export const DialogOnrampCheckout: Component = () => {
     }
   })
 
-  const handleSubmit = (e: SubmitEvent) => {
-    e.preventDefault()
-    startCheckout()
-  }
-
   return (
     <Dialog size="normal" transition title={language.t("onramp.dialog.title")}>
       <div class="flex flex-col gap-6 pb-4 pt-4 sm:px-5 sm:pb-8">
         <Switch>
-          <Match when={phase().kind === "input"}>
-            <form class="flex flex-col gap-5" onSubmit={handleSubmit}>
-              <TextField
-                autofocus
-                type="text"
-                label={language.t("onramp.wallet.label")}
-                description={language.t("onramp.wallet.description")}
-                placeholder={language.t("onramp.wallet.placeholder")}
-                value={walletInput()}
-                onChange={(v) => {
-                  setWalletInput(v)
-                  if (walletError()) setWalletError(undefined)
-                }}
-                validationState={walletError() ? "invalid" : undefined}
-                error={walletError()}
-              />
+          <Match when={phase().kind === "loading"}>
+            <div class="flex items-center gap-3 py-2">
+              <Spinner class="size-5 text-icon-strong-base" />
+              <span class="text-14-regular text-text-base">{language.t("onramp.preparing")}</span>
+            </div>
+          </Match>
+
+          <Match when={phase().kind === "confirm"}>
+            <div class="flex flex-col gap-5">
+              <p class="text-14-regular text-text-weak leading-normal">{language.t("onramp.confirm.body")}</p>
+              <Show when={points.walletAddress()}>
+                {(addr) => (
+                  <div class="rounded-xl border border-border-weak-base bg-surface-base p-4">
+                    <div class="text-14-regular text-text-strong break-all font-mono">{addr()}</div>
+                  </div>
+                )}
+              </Show>
               <div class="flex justify-end gap-2">
                 <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
                   {language.t("onramp.cancel")}
                 </Button>
-                <Button type="submit" variant="primary" size="large">
-                  {language.t("onramp.start")}
+                <Button type="button" variant="primary" size="large" onClick={() => void startCheckout()}>
+                  {language.t("onramp.confirm.start")}
                 </Button>
               </div>
-            </form>
+            </div>
+          </Match>
+
+          <Match when={phase().kind === "authenticating"}>
+            <div class="flex items-center gap-3 py-2">
+              <Spinner class="size-5 text-icon-strong-base" />
+              <span class="text-14-regular text-text-base">{language.t("onramp.preparing")}</span>
+            </div>
           </Match>
 
           <Match when={phase().kind === "waiting"}>
@@ -221,12 +203,8 @@ export const DialogOnrampCheckout: Component = () => {
                 <Spinner class="size-5 text-icon-strong-base" />
                 <span class="text-14-regular text-text-base">{statusLabel()}</span>
               </div>
-              <p class="text-14-regular text-text-weak leading-normal">
-                {language.t("onramp.openCheckoutHint")}
-              </p>
-              <p class="text-14-medium text-text-danger-base leading-normal">
-                {language.t("onramp.waitingWarning")}
-              </p>
+              <p class="text-14-regular text-text-weak leading-normal">{language.t("onramp.openCheckoutHint")}</p>
+              <p class="text-14-medium text-text-danger-base leading-normal">{language.t("onramp.waitingWarning")}</p>
               <Show when={redirectUrl()}>
                 <div class="flex flex-wrap gap-2">
                   <Button type="button" variant="primary" size="large" onClick={reopenCheckout}>
@@ -245,9 +223,7 @@ export const DialogOnrampCheckout: Component = () => {
                 <div class="flex flex-col gap-5">
                   <div class="flex items-center gap-3">
                     <Icon name="circle-check" class="text-icon-success-base size-6" />
-                    <span class="text-16-medium text-text-strong">
-                      {language.t("onramp.success.heading")}
-                    </span>
+                    <span class="text-16-medium text-text-strong">{language.t("onramp.success.heading")}</span>
                   </div>
                   <div class="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-border-weak-base bg-surface-base p-4">
                     <div class="text-12-medium uppercase tracking-wide text-text-weak">
@@ -291,14 +267,12 @@ export const DialogOnrampCheckout: Component = () => {
                 <Icon name="circle-ban-sign" class="text-icon-critical-base size-6" />
                 <span class="text-16-medium text-text-strong">{language.t("onramp.rejected.heading")}</span>
               </div>
-              <p class="text-14-regular text-text-weak leading-normal">
-                {language.t("onramp.rejected.body")}
-              </p>
+              <p class="text-14-regular text-text-weak leading-normal">{language.t("onramp.rejected.body")}</p>
               <div class="flex justify-end gap-2">
                 <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
                   {language.t("onramp.rejected.close")}
                 </Button>
-                <Button type="button" variant="primary" size="large" onClick={resetToInput}>
+                <Button type="button" variant="primary" size="large" onClick={resetToConfirm}>
                   {language.t("onramp.rejected.retry")}
                 </Button>
               </div>
@@ -316,9 +290,11 @@ export const DialogOnrampCheckout: Component = () => {
                 <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
                   {language.t("onramp.cancel")}
                 </Button>
-                <Button type="button" variant="primary" size="large" onClick={resetToInput}>
-                  {language.t("onramp.retry")}
-                </Button>
+                <Show when={platform.wallet}>
+                  <Button type="button" variant="primary" size="large" onClick={resetToConfirm}>
+                    {language.t("onramp.retry")}
+                  </Button>
+                </Show>
               </div>
             </div>
           </Match>

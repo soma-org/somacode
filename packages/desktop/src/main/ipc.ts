@@ -12,6 +12,7 @@ import type {
 } from "../preload/types"
 import { getStore } from "./store"
 import { setTitlebar, updateTitlebar } from "./windows"
+import { startCheckout as walletStartCheckout } from "./wallet"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -198,6 +199,8 @@ export function registerIpcHandlers(deps: Deps) {
     if (!win) return
     setTitlebar(win, theme)
   })
+
+  ipcMain.handle("wallet-start-checkout", () => walletStartCheckout())
 }
 
 export function sendSqliteMigrationProgress(win: BrowserWindow, progress: SqliteMigrationProgress) {

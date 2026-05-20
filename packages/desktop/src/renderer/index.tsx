@@ -13,6 +13,9 @@ import {
   PlatformProvider,
   ServerConnection,
   useCommand,
+  type WalletCheckoutFailure,
+  type WalletCheckoutResult,
+  type WalletProvider,
 } from "@opencode-ai/app"
 import * as Sentry from "@sentry/solid"
 import type { AsyncStorage } from "@solid-primitives/storage"
@@ -266,7 +269,30 @@ const createPlatform = (): Platform => {
         type: "image/png",
       })
     },
+
+    wallet: {
+      async startCheckout(): Promise<WalletCheckoutResult> {
+        try {
+          const result = await window.api.walletStartCheckout()
+          if (result.ok) return result
+          return { ok: false, reason: coerceWalletReason(result.reason), message: result.message }
+        } catch (err) {
+          return { ok: false, reason: "unavailable", message: (err as Error)?.message }
+        }
+      },
+    } satisfies WalletProvider,
   }
+}
+
+function coerceWalletReason(reason: string): WalletCheckoutFailure {
+  const known: WalletCheckoutFailure[] = [
+    "unavailable",
+    "auth_failed",
+    "network",
+    "missing_gateway_url",
+    "missing_intent_id",
+  ]
+  return known.find((k) => k === reason) ?? "unavailable"
 }
 
 let menuTrigger = null as null | ((id: string) => void)

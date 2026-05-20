@@ -3,11 +3,12 @@
 import * as Sentry from "@sentry/solid"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
-import { type Platform, PlatformProvider } from "@/context/platform"
+import { type Platform, PlatformProvider, type WalletProvider } from "@/context/platform"
 import { dict as en } from "@/i18n/en"
 import { dict as zh } from "@/i18n/zh"
 import { handleNotificationClick } from "@/utils/notification-click"
 import { authFromToken } from "@/utils/server"
+import { readOnrampBaseUrl } from "@/utils/onramp-session"
 import pkg from "../package.json"
 import { ServerConnection } from "./context/server"
 
@@ -94,6 +95,27 @@ const restart: Platform["restart"] = async () => {
   window.location.reload()
 }
 
+const wallet: WalletProvider = {
+  async startCheckout() {
+    try {
+      const res = await fetch(`${readOnrampBaseUrl()}/api/onramp/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+      })
+      if (!res.ok) {
+        return { ok: false, reason: res.status === 401 ? "auth_failed" : "network" }
+      }
+      const body = (await res.json()) as { redirectUrl?: string; walletAddress?: string }
+      if (typeof body.redirectUrl !== "string" || typeof body.walletAddress !== "string") {
+        return { ok: false, reason: "network", message: "Malformed response from backend" }
+      }
+      return { ok: true, redirectUrl: body.redirectUrl, walletAddress: body.walletAddress }
+    } catch (err) {
+      return { ok: false, reason: "network", message: (err as Error)?.message }
+    }
+  },
+}
+
 const root = document.getElementById("root")
 if (!(root instanceof HTMLElement) && import.meta.env.DEV) {
   throw new Error(getRootNotFoundError())
@@ -132,6 +154,7 @@ const platform: Platform = {
     return stored ? ServerConnection.Key.make(stored) : null
   },
   setDefaultServer: writeDefaultServerUrl,
+  wallet,
 }
 
 if (import.meta.env.VITE_SENTRY_DSN) {

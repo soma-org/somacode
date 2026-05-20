@@ -714,8 +714,16 @@ export const dict = {
   "onramp.error.missing_gateway_url":
     "VITE_PAYMENT_GATEWAY_URL is not configured. Set it to your payment gateway URL.",
   "onramp.error.missing_wallet_address": "Wallet address is required.",
+  "onramp.error.missing_intent_id": "The backend did not return an intent id.",
+  "onramp.error.wallet_unavailable":
+    "No wallet provider is available on this platform. Please use the desktop or terminal app.",
+  "onramp.error.auth_failed": "Wallet signin to the payment backend failed. Please try again.",
+  "onramp.error.network": "Could not reach the payment backend. Check your connection and try again.",
   "onramp.error.stream_lost":
     "Connection to the onramp backend was lost. We will retry automatically.",
+  "onramp.preparing": "Preparing wallet...",
+  "onramp.confirm.body": "USDC will be delivered to your soma wallet:",
+  "onramp.confirm.start": "Continue to payment",
   "onramp.success.heading": "USDC purchased",
   "onramp.success.amountLabel": "You received",
   "onramp.success.paidLabel": "You paid",
