@@ -63,11 +63,17 @@ export function Dialog(
   )
 }
 
+type ReplaceOptions = {
+  onClose?: () => void
+  dismissable?: boolean
+}
+
 function init() {
   const [store, setStore] = createStore({
     stack: [] as {
       element: JSX.Element
       onClose?: () => void
+      dismissable: boolean
     }[],
     size: "medium" as "medium" | "large" | "xlarge",
   })
@@ -137,7 +143,9 @@ function init() {
       })
       refocus()
     },
-    replace(input: any, onClose?: () => void) {
+    replace(input: any, optionsOrOnClose?: ReplaceOptions | (() => void)) {
+      const options =
+        typeof optionsOrOnClose === "function" ? { onClose: optionsOrOnClose } : (optionsOrOnClose ?? {})
       if (store.stack.length === 0) {
         focus = renderer.currentFocusedRenderable
         focus?.blur()
@@ -149,9 +157,15 @@ function init() {
       setStore("stack", [
         {
           element: input,
-          onClose,
+          onClose: options.onClose,
+          dismissable: options.dismissable !== false,
         },
       ])
+    },
+    setDismissable(dismissable: boolean) {
+      const current = store.stack.at(-1)
+      if (!current) return
+      setStore("stack", store.stack.length - 1, "dismissable", dismissable)
     },
     get stack() {
       return store.stack
@@ -193,7 +207,13 @@ export function DialogProvider(props: ParentProps) {
         }
       >
         <Show when={value.stack.length}>
-          <Dialog onClose={() => value.clear()} size={value.size}>
+          <Dialog
+            onClose={() => {
+              if (!value.stack.at(-1)?.dismissable) return
+              value.clear()
+            }}
+            size={value.size}
+          >
             {value.stack.at(-1)!.element}
           </Dialog>
         </Show>

@@ -480,7 +480,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         slashName: "buy-usdc",
         desc: "Top up USDC via Stripe Crypto onramp",
         run: () => {
-          dialog.replace(() => <DialogOnrampCheckout />)
+          dialog.replace(() => <DialogOnrampCheckout />, { dismissable: false })
         },
       },
       {
