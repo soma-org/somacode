@@ -61,8 +61,8 @@ function errorMessage(reason: ErrorReason): string {
       return "Failed to load wallet keypair from ~/.soma/evm_keypair.json."
     case "nonce_failed":
       return "Could not fetch a sign-in nonce from the backend."
-    case "verify_failed":
-      return "Backend rejected the signed nonce."
+    case "register_failed":
+      return "Backend rejected the payment registration."
     case "stream_lost":
       return "Lost connection to the onramp event stream."
   }

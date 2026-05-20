@@ -65,7 +65,7 @@ export function buildPaymentGatewayUrl(options: BuildGatewayUrlOptions): BuildGa
   return { ok: true, redirectUrl: `${base}?wallet=${encodeURIComponent(walletAddress)}` }
 }
 
-export type AuthFailureReason = "nonce_failed" | "verify_failed"
+export type AuthFailureReason = "nonce_failed" | "register_failed"
 
 export type AuthResult = { ok: true; intent_id: string } | { ok: false; reason: AuthFailureReason }
 
@@ -110,13 +110,13 @@ async function fetchNonce(baseUrl: string, f: typeof fetch): Promise<string | nu
   }
 }
 
-async function postVerify(
+async function postRegister(
   baseUrl: string,
-  payload: { publicKey: string; address: string; signature: string; nonce: string; one_time_code: string },
+  payload: { publicKey: string; address: string; signature: string; nonce: string; otp: string },
   f: typeof fetch,
 ): Promise<{ intent_id: string } | null> {
   try {
-    const res = await f(`${baseUrl}/api/auth/verify`, {
+    const res = await f(`${baseUrl}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(payload),
@@ -143,23 +143,23 @@ export async function authenticateWallet(options: AuthOptions): Promise<AuthResu
   try {
     signature = await options.sign(nonce)
   } catch {
-    return { ok: false, reason: "verify_failed" }
+    return { ok: false, reason: "register_failed" }
   }
 
-  const verified = await postVerify(
+  const registered = await postRegister(
     baseUrl,
     {
       publicKey: options.publicKey,
       address: options.address,
       signature,
       nonce,
-      one_time_code: options.oneTimeCode,
+      otp: options.oneTimeCode,
     },
     f,
   )
-  if (!verified) return { ok: false, reason: "verify_failed" }
+  if (!registered) return { ok: false, reason: "register_failed" }
 
-  return { ok: true, ...verified }
+  return { ok: true, ...registered }
 }
 
 export function walletAddressesMatch(a?: string, b?: string): boolean {
