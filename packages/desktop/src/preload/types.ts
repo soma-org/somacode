@@ -20,7 +20,7 @@ export type WindowConfig = {
 }
 
 export type WalletCheckoutResult =
-  | { ok: true; redirectUrl: string; walletAddress: string }
+  | { ok: true; redirectUrl: string; walletAddress: string; oneTimeCode: string }
   | { ok: false; reason: string; message?: string }
 
 export type ElectronAPI = {

@@ -3,6 +3,7 @@ import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js"
 import {
   authenticateWallet,
   buildPaymentGatewayUrl,
+  generateOneTimeCode,
   isTerminalStatus,
   subscribeToOnrampEvents,
   walletAddressesMatch,
@@ -28,7 +29,7 @@ type Phase =
   | { kind: "loading_keypair" }
   | { kind: "confirm"; keypair: EvmKeypair }
   | { kind: "authenticating"; keypair: EvmKeypair }
-  | { kind: "waiting"; status: OnrampStatus; details?: OnrampTransactionDetails }
+  | { kind: "waiting"; status: OnrampStatus; oneTimeCode: string; details?: OnrampTransactionDetails }
   | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
   | { kind: "error"; reason: ErrorReason }
@@ -127,7 +128,7 @@ export function DialogOnrampCheckout() {
         }
         const current = phase()
         if (current.kind === "waiting") {
-          setPhase({ kind: "waiting", status: event.status, details })
+          setPhase({ kind: "waiting", status: event.status, oneTimeCode: current.oneTimeCode, details })
         }
       },
       onError: () => {
@@ -164,10 +165,12 @@ export function DialogOnrampCheckout() {
   const startCheckout = async (keypair: EvmKeypair) => {
     setPhase({ kind: "authenticating", keypair })
 
+    const oneTimeCode = generateOneTimeCode()
     const auth = await authenticateWallet({
       baseUrl,
       publicKey: keypair.publicKey,
       address: keypair.address,
+      oneTimeCode,
       sign: (nonce) => signMessage(keypair.privateKey, nonce),
     })
 
@@ -185,7 +188,7 @@ export function DialogOnrampCheckout() {
 
     setActiveWallet(keypair.address)
     setRedirectUrl(result.redirectUrl)
-    setPhase({ kind: "waiting", status: "initialized" })
+    setPhase({ kind: "waiting", status: "initialized", oneTimeCode })
     openStream()
     void openUrl(renderer, result.redirectUrl)
   }
@@ -308,7 +311,10 @@ export function DialogOnrampCheckout() {
               <box gap={1}>
                 <Spinner color={theme.textMuted}>{statusLabel(current.status)}</Spinner>
                 <text fg={theme.textMuted} wrapMode="word">
-                  A payment page has opened in your browser. Complete the purchase to receive USDC.
+                  A payment page has opened in your browser. Type this code to verify:
+                </text>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  {current.oneTimeCode}
                 </text>
                 <text fg={theme.error} wrapMode="word">
                   Please don't close this dialog until the payment has succeeded.

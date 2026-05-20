@@ -105,11 +105,24 @@ const wallet: WalletProvider = {
       if (!res.ok) {
         return { ok: false, reason: res.status === 401 ? "auth_failed" : "network" }
       }
-      const body = (await res.json()) as { redirectUrl?: string; walletAddress?: string }
-      if (typeof body.redirectUrl !== "string" || typeof body.walletAddress !== "string") {
+      const body = (await res.json()) as {
+        redirectUrl?: string
+        walletAddress?: string
+        oneTimeCode?: string
+      }
+      if (
+        typeof body.redirectUrl !== "string" ||
+        typeof body.walletAddress !== "string" ||
+        typeof body.oneTimeCode !== "string"
+      ) {
         return { ok: false, reason: "network", message: "Malformed response from backend" }
       }
-      return { ok: true, redirectUrl: body.redirectUrl, walletAddress: body.walletAddress }
+      return {
+        ok: true,
+        redirectUrl: body.redirectUrl,
+        walletAddress: body.walletAddress,
+        oneTimeCode: body.oneTimeCode,
+      }
     } catch (err) {
       return { ok: false, reason: "network", message: (err as Error)?.message }
     }

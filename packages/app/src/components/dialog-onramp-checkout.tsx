@@ -23,7 +23,7 @@ type Phase =
   | { kind: "loading" }
   | { kind: "confirm" }
   | { kind: "authenticating" }
-  | { kind: "waiting"; status: OnrampStatus; details?: OnrampTransactionDetails }
+  | { kind: "waiting"; status: OnrampStatus; oneTimeCode: string; details?: OnrampTransactionDetails }
   | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
   | { kind: "error"; reason: ErrorReason; message?: string }
@@ -63,7 +63,7 @@ export const DialogOnrampCheckout: Component = () => {
         }
         const current = phase()
         if (current.kind === "waiting") {
-          setPhase({ kind: "waiting", status: event.status, details })
+          setPhase({ kind: "waiting", status: event.status, oneTimeCode: current.oneTimeCode, details })
         }
       },
       onError: () => {
@@ -106,7 +106,7 @@ export const DialogOnrampCheckout: Component = () => {
     points.setWalletAddress(result.walletAddress)
     setActiveWallet(result.walletAddress)
     setRedirectUrl(result.redirectUrl)
-    setPhase({ kind: "waiting", status: "initialized" })
+    setPhase({ kind: "waiting", status: "initialized", oneTimeCode: result.oneTimeCode })
     openStream()
     platform.openLink(result.redirectUrl)
   }
@@ -198,21 +198,31 @@ export const DialogOnrampCheckout: Component = () => {
           </Match>
 
           <Match when={phase().kind === "waiting"}>
-            <div class="flex flex-col gap-4 py-2">
-              <div class="flex items-center gap-3">
-                <Spinner class="size-5 text-icon-strong-base" />
-                <span class="text-14-regular text-text-base">{statusLabel()}</span>
-              </div>
-              <p class="text-14-regular text-text-weak leading-normal">{language.t("onramp.openCheckoutHint")}</p>
-              <p class="text-14-medium text-text-danger-base leading-normal">{language.t("onramp.waitingWarning")}</p>
-              <Show when={redirectUrl()}>
-                <div class="flex flex-wrap gap-2">
-                  <Button type="button" variant="primary" size="large" onClick={reopenCheckout}>
-                    {language.t("onramp.openCheckout")}
-                  </Button>
+            {(() => {
+              const current = phase() as Extract<Phase, { kind: "waiting" }>
+              return (
+                <div class="flex flex-col gap-4 py-2">
+                  <div class="flex items-center gap-3">
+                    <Spinner class="size-5 text-icon-strong-base" />
+                    <span class="text-14-regular text-text-base">{statusLabel()}</span>
+                  </div>
+                  <p class="text-14-regular text-text-weak leading-normal">{language.t("onramp.code.hint")}</p>
+                  <div class="flex items-center justify-center rounded-xl border border-border-weak-base bg-surface-base py-4">
+                    <span class="text-[28px] font-mono font-medium tracking-[0.4em] text-text-strong tabular-nums">
+                      {current.oneTimeCode}
+                    </span>
+                  </div>
+                  <p class="text-14-medium text-text-danger-base leading-normal">{language.t("onramp.waitingWarning")}</p>
+                  <Show when={redirectUrl()}>
+                    <div class="flex flex-wrap gap-2">
+                      <Button type="button" variant="primary" size="large" onClick={reopenCheckout}>
+                        {language.t("onramp.openCheckout")}
+                      </Button>
+                    </div>
+                  </Show>
                 </div>
-              </Show>
-            </div>
+              )
+            })()}
           </Match>
 
           <Match when={phase().kind === "success"}>

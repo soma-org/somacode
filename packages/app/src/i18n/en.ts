@@ -724,6 +724,7 @@ export const dict = {
   "onramp.preparing": "Preparing wallet...",
   "onramp.confirm.body": "USDC will be delivered to your soma wallet:",
   "onramp.confirm.start": "Continue to payment",
+  "onramp.code.hint": "A payment page has opened in your browser. Type this code to verify:",
   "onramp.success.heading": "USDC purchased",
   "onramp.success.amountLabel": "You received",
   "onramp.success.paidLabel": "You paid",

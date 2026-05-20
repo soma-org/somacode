@@ -67,16 +67,31 @@ export function buildPaymentGatewayUrl(options: BuildGatewayUrlOptions): BuildGa
 
 export type AuthFailureReason = "nonce_failed" | "verify_failed"
 
-export type AuthResult =
-  | { ok: true; intent_id: string; intent_token: string }
-  | { ok: false; reason: AuthFailureReason }
+export type AuthResult = { ok: true; intent_id: string } | { ok: false; reason: AuthFailureReason }
 
 export type AuthOptions = {
   baseUrl?: string
   publicKey: string
   address: string
+  /** Client-generated one-time code (XXXX-XXXX) the user will type into the payment gateway. Backend stores a hash and checks it on /api/intent/redeem. */
+  oneTimeCode: string
   sign: (nonce: string) => Promise<string> | string
   fetch?: typeof fetch
+}
+
+/** Generate a XXXX-XXXX one-time code (8 digits with dash). 10^8 = 100M space; combined with ≤5-min TTL and rate-limited redeem, that's enough for a user-typed handshake. */
+export function generateOneTimeCode(): string {
+  const buf = new Uint8Array(4)
+  // Prefer Web Crypto if available (browser, modern Node, Bun), fall back to Math.random.
+  const g = (globalThis as { crypto?: { getRandomValues?: (b: Uint8Array) => void } }).crypto
+  if (g?.getRandomValues) {
+    g.getRandomValues(buf)
+  } else {
+    for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256)
+  }
+  const a = (((buf[0]! << 8) | buf[1]!) % 10000).toString().padStart(4, "0")
+  const b = (((buf[2]! << 8) | buf[3]!) % 10000).toString().padStart(4, "0")
+  return `${a}-${b}`
 }
 
 async function fetchNonce(baseUrl: string, f: typeof fetch): Promise<string | null> {
@@ -97,9 +112,9 @@ async function fetchNonce(baseUrl: string, f: typeof fetch): Promise<string | nu
 
 async function postVerify(
   baseUrl: string,
-  payload: { publicKey: string; address: string; signature: string; nonce: string },
+  payload: { publicKey: string; address: string; signature: string; nonce: string; one_time_code: string },
   f: typeof fetch,
-): Promise<{ intent_id: string; intent_token: string } | null> {
+): Promise<{ intent_id: string } | null> {
   try {
     const res = await f(`${baseUrl}/api/auth/verify`, {
       method: "POST",
@@ -109,10 +124,9 @@ async function postVerify(
     if (!res.ok) return null
     const body = (await res.json()) as unknown
     if (typeof body !== "object" || body === null) return null
-    const { intent_id, intent_token } = body as Record<string, unknown>
-    if (typeof intent_id !== "string" || typeof intent_token !== "string") return null
-    if (!intent_id || !intent_token) return null
-    return { intent_id, intent_token }
+    const { intent_id } = body as Record<string, unknown>
+    if (typeof intent_id !== "string" || !intent_id) return null
+    return { intent_id }
   } catch {
     return null
   }
@@ -134,7 +148,13 @@ export async function authenticateWallet(options: AuthOptions): Promise<AuthResu
 
   const verified = await postVerify(
     baseUrl,
-    { publicKey: options.publicKey, address: options.address, signature, nonce },
+    {
+      publicKey: options.publicKey,
+      address: options.address,
+      signature,
+      nonce,
+      one_time_code: options.oneTimeCode,
+    },
     f,
   )
   if (!verified) return { ok: false, reason: "verify_failed" }

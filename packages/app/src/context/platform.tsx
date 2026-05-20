@@ -17,7 +17,7 @@ export type WalletCheckoutFailure =
   | "missing_intent_id"
 
 export type WalletCheckoutResult =
-  | { ok: true; redirectUrl: string; walletAddress: string }
+  | { ok: true; redirectUrl: string; walletAddress: string; oneTimeCode: string }
   | { ok: false; reason: WalletCheckoutFailure; message?: string }
 
 export type WalletProvider = {

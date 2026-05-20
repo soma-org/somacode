@@ -6,6 +6,7 @@ import type { Hex } from "viem"
 import {
   authenticateWallet,
   buildPaymentGatewayUrl,
+  generateOneTimeCode,
   DEFAULT_ONRAMP_BASE_URL,
   DEFAULT_PAYMENT_GATEWAY_URL,
 } from "@opencode-ai/core/util/onramp-session"
@@ -17,7 +18,7 @@ type EvmKeypair = {
 }
 
 export type WalletCheckoutResult =
-  | { ok: true; redirectUrl: string; walletAddress: string }
+  | { ok: true; redirectUrl: string; walletAddress: string; oneTimeCode: string }
   | { ok: false; reason: string; message?: string }
 
 function keypairDir(): string {
@@ -131,10 +132,12 @@ export async function startCheckout(): Promise<WalletCheckoutResult> {
     return { ok: false, reason: "unavailable", message: (err as Error)?.message }
   }
 
+  const oneTimeCode = generateOneTimeCode()
   const auth = await authenticateWallet({
     baseUrl: readEnvBaseUrl(),
     publicKey: keypair.publicKey,
     address: keypair.address,
+    oneTimeCode,
     sign: (nonce) => privateKeyToAccount(keypair.privateKey).signMessage({ message: nonce }),
   })
   if (!auth.ok) {
@@ -146,5 +149,5 @@ export async function startCheckout(): Promise<WalletCheckoutResult> {
     return { ok: false, reason: url.reason }
   }
 
-  return { ok: true, redirectUrl: url.redirectUrl, walletAddress: keypair.address }
+  return { ok: true, redirectUrl: url.redirectUrl, walletAddress: keypair.address, oneTimeCode }
 }
