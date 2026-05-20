@@ -1,12 +1,14 @@
-import { TextareaRenderable, TextAttributes } from "@opentui/core"
-import { createSignal, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { TextAttributes } from "@opentui/core"
+import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js"
 import open from "open"
 import {
+  authenticateWallet,
   buildPaymentGatewayUrl,
   isTerminalStatus,
   subscribeToOnrampEvents,
   walletAddressesMatch,
   DEFAULT_PAYMENT_GATEWAY_URL,
+  type AuthFailureReason,
   type BuildGatewayUrlFailureReason,
   type OnrampStatus,
   type OnrampSubscription,
@@ -17,14 +19,14 @@ import { useDialog } from "@tui/ui/dialog"
 import { useKV } from "@tui/context/kv"
 import { useBindings } from "../keymap"
 import { Spinner } from "./spinner"
-import * as Clipboard from "@tui/util/clipboard"
+import { ensureEvmKeypair, signMessage, type EvmKeypair } from "../util/evm-keypair"
 
-const WALLET_PATTERN = /^0x[0-9a-fA-F]{40}$/
-
-type ErrorReason = BuildGatewayUrlFailureReason | "stream_lost"
+type ErrorReason = BuildGatewayUrlFailureReason | AuthFailureReason | "stream_lost" | "missing_keypair"
 
 type Phase =
-  | { kind: "input" }
+  | { kind: "loading_keypair" }
+  | { kind: "confirm"; keypair: EvmKeypair }
+  | { kind: "authenticating"; keypair: EvmKeypair }
   | { kind: "waiting"; status: OnrampStatus; details?: OnrampTransactionDetails }
   | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
@@ -51,6 +53,14 @@ function errorMessage(reason: ErrorReason): string {
       return "VITE_SOMACODE_PAYMENT_GATEWAY_URL is not configured."
     case "missing_wallet_address":
       return "Wallet address is required."
+    case "missing_intent_id":
+      return "Backend did not return an intent id."
+    case "missing_keypair":
+      return "Failed to load wallet keypair from ~/.soma/evm_keypair.json."
+    case "nonce_failed":
+      return "Could not fetch a sign-in nonce from the backend."
+    case "verify_failed":
+      return "Backend rejected the signed nonce."
     case "stream_lost":
       return "Lost connection to the onramp event stream."
   }
@@ -76,17 +86,11 @@ export function DialogOnrampCheckout() {
 
   const baseUrl = process.env.SOMACODE_ONRAMP_BASE_URL?.trim() || undefined
   const gatewayUrl = process.env.VITE_SOMACODE_PAYMENT_GATEWAY_URL?.trim() || DEFAULT_PAYMENT_GATEWAY_URL
-  const initialWallet = (() => {
-    const v = kv.get("wallet_address", "")
-    return typeof v === "string" ? v : ""
-  })()
 
-  const [phase, setPhase] = createSignal<Phase>({ kind: "input" })
-  const [walletError, setWalletError] = createSignal<string | undefined>(undefined)
+  const [phase, setPhase] = createSignal<Phase>({ kind: "loading_keypair" })
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
   const [activeWallet, setActiveWallet] = createSignal<string | undefined>(undefined)
 
-  let textarea: TextareaRenderable | undefined
   let subscription: OnrampSubscription | undefined
   const alive = { value: true }
 
@@ -137,11 +141,16 @@ export function DialogOnrampCheckout() {
   onMount(() => {
     dialog.setSize("medium")
     openStream()
-    setTimeout(() => {
-      if (!textarea || textarea.isDestroyed) return
-      textarea.focus()
-      textarea.gotoLineEnd()
-    }, 1)
+    void ensureEvmKeypair()
+      .then((keypair) => {
+        if (!alive.value) return
+        kv.set("wallet_address", keypair.address)
+        setPhase({ kind: "confirm", keypair })
+      })
+      .catch(() => {
+        if (!alive.value) return
+        setPhase({ kind: "error", reason: "missing_keypair" })
+      })
   })
 
   onCleanup(() => {
@@ -150,29 +159,29 @@ export function DialogOnrampCheckout() {
     subscription = undefined
   })
 
-  const startCheckout = (wallet: string) => {
-    const current = phase()
-    if (current.kind === "waiting" || current.kind === "success") return
+  const startCheckout = async (keypair: EvmKeypair) => {
+    setPhase({ kind: "authenticating", keypair })
 
-    const trimmed = wallet.trim()
-    if (!trimmed) {
-      setWalletError("Wallet address is required.")
+    const auth = await authenticateWallet({
+      baseUrl,
+      publicKey: keypair.publicKey,
+      address: keypair.address,
+      sign: (nonce) => signMessage(keypair.privateKey, nonce),
+    })
+
+    if (!alive.value) return
+    if (!auth.ok) {
+      setPhase({ kind: "error", reason: auth.reason })
       return
     }
-    if (!WALLET_PATTERN.test(trimmed)) {
-      setWalletError("Enter a valid 0x-prefixed Ethereum address.")
-      return
-    }
-    setWalletError(undefined)
-    kv.set("wallet_address", trimmed)
 
-    const result = buildPaymentGatewayUrl({ walletAddress: trimmed, gatewayUrl })
+    const result = buildPaymentGatewayUrl({ intentId: auth.intent_id, gatewayUrl })
     if (!result.ok) {
       setPhase({ kind: "error", reason: result.reason })
       return
     }
 
-    setActiveWallet(trimmed)
+    setActiveWallet(keypair.address)
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized" })
     openStream()
@@ -184,15 +193,35 @@ export function DialogOnrampCheckout() {
     if (url) open(url).catch(() => {})
   }
 
-  const resetToInput = () => {
+  const resetToConfirm = () => {
     setActiveWallet(undefined)
     setRedirectUrl(undefined)
-    setPhase({ kind: "input" })
-    setTimeout(() => {
-      if (!textarea || textarea.isDestroyed) return
-      textarea.focus()
-    }, 1)
+    void ensureEvmKeypair()
+      .then((keypair) => {
+        if (!alive.value) return
+        setPhase({ kind: "confirm", keypair })
+      })
+      .catch(() => {
+        if (!alive.value) return
+        setPhase({ kind: "error", reason: "missing_keypair" })
+      })
   }
+
+  useBindings(() => ({
+    enabled: () => phase().kind === "confirm",
+    bindings: [
+      {
+        key: "return",
+        desc: "Start checkout",
+        group: "Dialog",
+        cmd: () => {
+          const current = phase()
+          if (current.kind !== "confirm") return
+          void startCheckout(current.keypair)
+        },
+      },
+    ],
+  }))
 
   useBindings(() => ({
     enabled: () => phase().kind === "waiting",
@@ -216,28 +245,7 @@ export function DialogOnrampCheckout() {
         key: "r",
         desc: "Restart",
         group: "Dialog",
-        cmd: () => resetToInput(),
-      },
-    ],
-  }))
-
-  useBindings(() => ({
-    enabled: () => phase().kind === "input",
-    bindings: [
-      {
-        key: "ctrl+v",
-        desc: "Paste wallet address",
-        group: "Dialog",
-        cmd: async () => {
-          if (!textarea || textarea.isDestroyed) return
-          const content = await Clipboard.read().catch(() => undefined)
-          if (!content || content.mime !== "text/plain") return
-          const cleaned = content.data.replace(/\s+/g, "")
-          if (!cleaned) return
-          textarea.setText(cleaned)
-          textarea.gotoLineEnd()
-          if (walletError()) setWalletError(undefined)
-        },
+        cmd: () => resetToConfirm(),
       },
     ],
   }))
@@ -254,36 +262,40 @@ export function DialogOnrampCheckout() {
       </box>
 
       <Switch>
-        <Match when={phase().kind === "input"}>
+        <Match when={phase().kind === "loading_keypair"}>
           <box gap={1}>
-            <text fg={theme.textMuted} wrapMode="word">
-              Enter the wallet address where USDC will be delivered.
-            </text>
-            <textarea
-              onSubmit={() => {
-                if (!textarea) return
-                startCheckout(textarea.plainText)
-              }}
-              height={3}
-              ref={(val: TextareaRenderable) => {
-                textarea = val
-              }}
-              initialValue={initialWallet}
-              placeholder="0x..."
-              placeholderColor={theme.textMuted}
-              textColor={theme.text}
-              focusedTextColor={theme.text}
-              cursorColor={theme.text}
-            />
-            <Show when={walletError()}>
-              <text fg={theme.error}>{walletError()}</text>
-            </Show>
-            <box paddingBottom={1}>
-              <text fg={theme.textMuted}>
-                <span style={{ fg: theme.text }}>enter</span> submit{" "}
-                <span style={{ fg: theme.text }}>esc</span> cancel
-              </text>
-            </box>
+            <Spinner color={theme.textMuted}>Loading wallet...</Spinner>
+            <box paddingBottom={1} />
+          </box>
+        </Match>
+
+        <Match when={phase().kind === "confirm"}>
+          {(() => {
+            const current = phase() as Extract<Phase, { kind: "confirm" }>
+            return (
+              <box gap={1}>
+                <text fg={theme.textMuted} wrapMode="word">
+                  USDC will be delivered to your soma wallet:
+                </text>
+                <text fg={theme.text}>{current.keypair.address}</text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  Stored in ~/.soma/evm_keypair.json. Keep this file safe.
+                </text>
+                <box paddingBottom={1}>
+                  <text fg={theme.textMuted}>
+                    <span style={{ fg: theme.text }}>enter</span> continue{" "}
+                    <span style={{ fg: theme.text }}>esc</span> cancel
+                  </text>
+                </box>
+              </box>
+            )
+          })()}
+        </Match>
+
+        <Match when={phase().kind === "authenticating"}>
+          <box gap={1}>
+            <Spinner color={theme.textMuted}>Signing in to payment backend...</Spinner>
+            <box paddingBottom={1} />
           </box>
         </Match>
 

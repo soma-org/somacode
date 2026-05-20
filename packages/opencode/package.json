@@ -160,6 +160,7 @@
     "turndown": "7.2.0",
     "ulid": "catalog:",
     "venice-ai-sdk-provider": "2.0.1",
+    "viem": "2.50.4",
     "vscode-jsonrpc": "8.2.1",
     "web-tree-sitter": "0.25.10",
     "which": "6.0.1",

@@ -28,7 +28,7 @@ export type OnrampEvent = {
   session: OnrampSession
 }
 
-export type BuildGatewayUrlFailureReason = "missing_gateway_url" | "missing_wallet_address"
+export type BuildGatewayUrlFailureReason = "missing_gateway_url" | "missing_wallet_address" | "missing_intent_id"
 
 export type BuildGatewayUrlResult =
   | { ok: true; redirectUrl: string }
@@ -46,17 +46,100 @@ function normalizeGatewayUrl(input?: string): string {
   return (input ?? DEFAULT_PAYMENT_GATEWAY_URL).trim().replace(/\/+$/, "")
 }
 
-export function buildPaymentGatewayUrl(options: {
-  walletAddress: string
-  gatewayUrl?: string
-}): BuildGatewayUrlResult {
-  const walletAddress = options.walletAddress.trim()
-  if (!walletAddress) return { ok: false, reason: "missing_wallet_address" }
+export type BuildGatewayUrlOptions =
+  | { intentId: string; gatewayUrl?: string }
+  | { walletAddress: string; gatewayUrl?: string }
 
+export function buildPaymentGatewayUrl(options: BuildGatewayUrlOptions): BuildGatewayUrlResult {
   const base = normalizeGatewayUrl(options.gatewayUrl)
   if (!base) return { ok: false, reason: "missing_gateway_url" }
 
+  if ("intentId" in options) {
+    const intentId = options.intentId.trim()
+    if (!intentId) return { ok: false, reason: "missing_intent_id" }
+    return { ok: true, redirectUrl: `${base}?intent_id=${encodeURIComponent(intentId)}` }
+  }
+
+  const walletAddress = options.walletAddress.trim()
+  if (!walletAddress) return { ok: false, reason: "missing_wallet_address" }
   return { ok: true, redirectUrl: `${base}?wallet=${encodeURIComponent(walletAddress)}` }
+}
+
+export type AuthFailureReason = "nonce_failed" | "verify_failed"
+
+export type AuthResult =
+  | { ok: true; intent_id: string; intent_token: string }
+  | { ok: false; reason: AuthFailureReason }
+
+export type AuthOptions = {
+  baseUrl?: string
+  publicKey: string
+  address: string
+  sign: (nonce: string) => Promise<string> | string
+  fetch?: typeof fetch
+}
+
+async function fetchNonce(baseUrl: string, f: typeof fetch): Promise<string | null> {
+  try {
+    const res = await f(`${baseUrl}/api/nonce`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as unknown
+    if (typeof body !== "object" || body === null) return null
+    const nonce = (body as Record<string, unknown>).nonce
+    return typeof nonce === "string" && nonce.length > 0 ? nonce : null
+  } catch {
+    return null
+  }
+}
+
+async function postVerify(
+  baseUrl: string,
+  payload: { publicKey: string; address: string; signature: string; nonce: string },
+  f: typeof fetch,
+): Promise<{ intent_id: string; intent_token: string } | null> {
+  try {
+    const res = await f(`${baseUrl}/api/auth/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as unknown
+    if (typeof body !== "object" || body === null) return null
+    const { intent_id, intent_token } = body as Record<string, unknown>
+    if (typeof intent_id !== "string" || typeof intent_token !== "string") return null
+    if (!intent_id || !intent_token) return null
+    return { intent_id, intent_token }
+  } catch {
+    return null
+  }
+}
+
+export async function authenticateWallet(options: AuthOptions): Promise<AuthResult> {
+  const baseUrl = normalizeBaseUrl(options.baseUrl)
+  const f = options.fetch ?? fetch
+
+  const nonce = await fetchNonce(baseUrl, f)
+  if (!nonce) return { ok: false, reason: "nonce_failed" }
+
+  let signature: string
+  try {
+    signature = await options.sign(nonce)
+  } catch {
+    return { ok: false, reason: "verify_failed" }
+  }
+
+  const verified = await postVerify(
+    baseUrl,
+    { publicKey: options.publicKey, address: options.address, signature, nonce },
+    f,
+  )
+  if (!verified) return { ok: false, reason: "verify_failed" }
+
+  return { ok: true, ...verified }
 }
 
 export function walletAddressesMatch(a?: string, b?: string): boolean {

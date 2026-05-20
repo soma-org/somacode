@@ -57,6 +57,7 @@ import { KVProvider, useKV } from "./context/kv"
 import { Provider } from "@/provider/provider"
 import { fetchBalance } from "@opencode-ai/core/util/balance-query"
 import { fetchSupportedModels } from "@opencode-ai/core/util/models-query"
+import { ensureEvmKeypair } from "./util/evm-keypair"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -366,6 +367,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       if (!result.ok) return
       kv.set("supported_models", result.models)
     })
+    void ensureEvmKeypair()
+      .then((keypair) => {
+        kv.set("wallet_address", keypair.address)
+      })
+      .catch(() => {})
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {
