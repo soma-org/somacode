@@ -1,4 +1,4 @@
-export const DEFAULT_MODELS_GRAPHQL_URL: string | undefined = undefined
+export const DEFAULT_MODELS_GRAPHQL_URL = "https://graphql.testnet.soma.org/graphql"
 
 export type SupportedModel = {
   providerID: string
@@ -8,75 +8,89 @@ export type SupportedModel = {
 }
 
 export type ModelsResult =
-  | { ok: true; models: SupportedModel[]; mock: boolean }
-  | { ok: false; reason: "http_error" | "invalid_response" | "network_error" }
+  | { ok: true; models: SupportedModel[] }
+  | { ok: false; reason: "http_error" | "invalid_response" | "network_error" | "missing_url" }
 
-const QUERY = `query SupportedModels {
-  supportedModels {
-    providerID
-    modelID
-    name
-    free
+const QUERY = `query AllModels($first: Int = 50) {
+  offerings(first: $first) {
+    edges {
+      node {
+        modelId
+        provider
+        promptMicrosPer1K
+        completionMicrosPer1K
+        cacheReadMicrosPer1K
+        cacheWriteMicrosPer1K
+        requestMicros
+        ttftBoundMs
+        ttotBoundMs
+        active
+        updatedAtMs
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
   }
 }`
 
-// Mock GraphQL response used when the endpoint is unset or unreachable.
-// Shape matches the `data.supportedModels` field a real server would return.
-const MOCK_RESPONSE: { data: { supportedModels: SupportedModel[] } } = {
-  data: {
-    supportedModels: [
-      { providerID: "opencode", modelID: "claude-sonnet-4-5", name: "Claude Sonnet 4.5" },
-      { providerID: "opencode", modelID: "claude-opus-4-5", name: "Claude Opus 4.5" },
-      { providerID: "opencode", modelID: "claude-haiku-4-5", name: "Claude Haiku 4.5", free: true },
-      { providerID: "anthropic", modelID: "claude-sonnet-4-5", name: "Claude Sonnet 4.5" },
-      { providerID: "anthropic", modelID: "claude-opus-4-5", name: "Claude Opus 4.5" },
-      { providerID: "openai", modelID: "gpt-5", name: "GPT-5" },
-      { providerID: "openai", modelID: "gpt-5-mini", name: "GPT-5 Mini" },
-      { providerID: "google", modelID: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
-      { providerID: "google", modelID: "gemini-2.5-flash", name: "Gemini 2.5 Flash", free: true },
-    ],
-  },
+function toBigInt(value: unknown): bigint {
+  if (typeof value !== "string" && typeof value !== "number") return 0n
+  try {
+    return BigInt(value)
+  } catch {
+    return 0n
+  }
 }
 
-function parseModels(value: unknown): SupportedModel[] | null {
-  if (!Array.isArray(value)) return null
-  const out: SupportedModel[] = []
-  for (const item of value) {
-    if (!item || typeof item !== "object") return null
-    const m = item as Record<string, unknown>
-    if (typeof m.providerID !== "string" || typeof m.modelID !== "string") return null
-    out.push({
-      providerID: m.providerID,
-      modelID: m.modelID,
-      name: typeof m.name === "string" ? m.name : m.modelID,
-      free: typeof m.free === "boolean" ? m.free : undefined,
-    })
+function offeringToModel(node: unknown): SupportedModel | null {
+  if (!node || typeof node !== "object") return null
+  const o = node as Record<string, unknown>
+  if (typeof o.modelId !== "string" || typeof o.provider !== "string") return null
+  if (o.active === false) return null
+
+  const prompt = toBigInt(o.promptMicrosPer1K)
+  const completion = toBigInt(o.completionMicrosPer1K)
+  const request = toBigInt(o.requestMicros)
+  const free = prompt === 0n && completion === 0n && request === 0n
+
+  return {
+    providerID: o.provider,
+    modelID: o.modelId,
+    name: o.modelId,
+    free: free || undefined,
   }
-  return out
 }
 
 export async function fetchSupportedModels(
   options: { url?: string; fetch?: typeof fetch } = {},
 ): Promise<ModelsResult> {
   const url = options.url ?? DEFAULT_MODELS_GRAPHQL_URL
-  if (!url) return { ok: true, models: MOCK_RESPONSE.data.supportedModels, mock: true }
+  if (!url) return { ok: false, reason: "missing_url" }
 
   const f = options.fetch ?? fetch
   try {
     const res = await f(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ query: QUERY }),
+      body: JSON.stringify({ query: QUERY, variables: { first: 50 } }),
     })
     if (!res.ok) return { ok: false, reason: "http_error" }
 
     const json = (await res.json().catch(() => undefined)) as
-      | { data?: { supportedModels?: unknown } }
+      | { data?: { offerings?: { edges?: Array<{ node?: unknown }> } } }
       | undefined
 
-    const models = parseModels(json?.data?.supportedModels)
-    if (!models) return { ok: false, reason: "invalid_response" }
-    return { ok: true, models, mock: false }
+    const edges = json?.data?.offerings?.edges
+    if (!Array.isArray(edges)) return { ok: false, reason: "invalid_response" }
+
+    const models: SupportedModel[] = []
+    for (const edge of edges) {
+      const model = offeringToModel(edge?.node)
+      if (model) models.push(model)
+    }
+    return { ok: true, models }
   } catch {
     return { ok: false, reason: "network_error" }
   }
