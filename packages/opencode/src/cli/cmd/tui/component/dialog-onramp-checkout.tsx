@@ -10,6 +10,8 @@ import {
   type OnrampTransactionDetails,
 } from "@opencode-ai/core/util/onramp-session"
 import { runOnrampCheckout, type OnrampCheckoutFailureReason } from "@opencode-ai/core/util/wallet-checkout"
+import { usdcToMicros, type BridgeFailureReason } from "@opencode-ai/core/util/bridge"
+import { executeBridge } from "@/wallet/bridge"
 import { useTheme } from "../context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { useKV } from "@tui/context/kv"
@@ -18,20 +20,31 @@ import { ensureEvmKeypair, signMessage, type EvmKeypair } from "../util/evm-keyp
 import { openUrl } from "../util/open-url"
 import { useRenderer } from "@opentui/solid"
 
-type ErrorReason = OnrampCheckoutFailureReason | "stream_lost" | "missing_keypair"
+type ErrorReason = OnrampCheckoutFailureReason | "stream_lost" | "missing_keypair" | BridgeFailureReason
 
 type Phase =
   | { kind: "loading_keypair" }
   | { kind: "confirm"; keypair: EvmKeypair }
   | { kind: "authenticating"; keypair: EvmKeypair }
   | { kind: "waiting"; status: OnrampStatus; oneTimeCode: string; details?: OnrampTransactionDetails }
-  | { kind: "success"; details?: OnrampTransactionDetails }
+  | { kind: "bridging"; details?: OnrampTransactionDetails }
+  | { kind: "success"; details?: OnrampTransactionDetails; bundleId?: string }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
-  | { kind: "error"; reason: ErrorReason }
+  | { kind: "error"; reason: ErrorReason; message?: string }
 
 type StepStatus = "pending" | "in_progress" | "done" | "error"
 
 const STEP_LABELS = ["Setup Wallet", "Verification", "Buy Base USDC", "To Soma USDC"] as const
+
+const BRIDGE_REASONS: ReadonlySet<ErrorReason> = new Set<ErrorReason>([
+  "missing_paymaster_url",
+  "missing_amount",
+  "invalid_amount",
+  "user_op_failed",
+  "paymaster_rejected",
+  "network_error",
+  "unsupported_platform",
+])
 
 function computeSteps(phase: Phase): [StepStatus, StepStatus, StepStatus, StepStatus] {
   switch (phase.kind) {
@@ -42,17 +55,20 @@ function computeSteps(phase: Phase): [StepStatus, StepStatus, StepStatus, StepSt
     case "authenticating":
       return ["done", "in_progress", "pending", "pending"]
     case "waiting":
-      if (phase.status === "fulfillment_complete") return ["done", "done", "done", "pending"]
+      if (phase.status === "fulfillment_complete") return ["done", "done", "done", "in_progress"]
       if (phase.status === "rejected") return ["done", "done", "error", "pending"]
       if (phase.status === "initialized") return ["done", "done", "in_progress", "pending"]
       return ["done", "done", "in_progress", "pending"]
+    case "bridging":
+      return ["done", "done", "done", "in_progress"]
     case "success":
-      return ["done", "done", "done", "pending"]
+      return ["done", "done", "done", "done"]
     case "rejected":
       return ["done", "done", "error", "pending"]
     case "error":
       if (phase.reason === "missing_keypair") return ["error", "pending", "pending", "pending"]
       if (phase.reason === "stream_lost") return ["done", "done", "error", "pending"]
+      if (BRIDGE_REASONS.has(phase.reason)) return ["done", "done", "done", "error"]
       return ["done", "error", "pending", "pending"]
   }
 }
@@ -72,15 +88,19 @@ function activeStepDetail(phase: Phase): { index: number; detail: string } | und
       if (phase.status === "requires_payment")
         return { index: 2, detail: "Purchasing via Stripe Onramp or LiFi widget..." }
       if (phase.status === "fulfillment_processing") return { index: 2, detail: "Processing your USDC..." }
+      if (phase.status === "fulfillment_complete") return { index: 3, detail: "Starting bridge to Soma..." }
       if (phase.status === "rejected") return { index: 2, detail: "Payment was declined" }
       return undefined
+    case "bridging":
+      return { index: 3, detail: "Bridging Base USDC → Soma USDC via paymaster..." }
     case "rejected":
       return { index: 2, detail: "Payment was declined" }
     case "error": {
       let index = 1
       if (phase.reason === "missing_keypair") index = 0
       else if (phase.reason === "stream_lost") index = 2
-      return { index, detail: errorMessage(phase.reason) }
+      else if (BRIDGE_REASONS.has(phase.reason)) index = 3
+      return { index, detail: phase.message ?? errorMessage(phase.reason) }
     }
     default:
       return undefined
@@ -146,6 +166,20 @@ function errorMessage(reason: ErrorReason): string {
       return "Backend rejected the payment registration."
     case "stream_lost":
       return "Lost connection to the onramp event stream."
+    case "missing_paymaster_url":
+      return "BASE_PAYMASTER_URL is not configured."
+    case "missing_amount":
+      return "Bridge amount is missing."
+    case "invalid_amount":
+      return "Bridge amount must be greater than zero."
+    case "user_op_failed":
+      return "Bridge transaction reverted on Base."
+    case "paymaster_rejected":
+      return "Paymaster rejected the sponsorship request."
+    case "network_error":
+      return "Network error while submitting the bridge transaction."
+    case "unsupported_platform":
+      return "Bridge is not supported on this platform."
   }
 }
 
@@ -186,6 +220,37 @@ export function DialogOnrampCheckout() {
     kv.set("usdc_balance", base + amount)
   }
 
+  const startBridge = async (details: OnrampTransactionDetails | undefined, keypair: EvmKeypair) => {
+    if (!alive.value) return
+    setPhase({ kind: "bridging", details })
+
+    const rawAmount = details?.destination_amount
+    if (!rawAmount) {
+      setPhase({ kind: "error", reason: "missing_amount" })
+      return
+    }
+    let micros: bigint
+    try {
+      micros = usdcToMicros(rawAmount)
+    } catch {
+      setPhase({ kind: "error", reason: "invalid_amount" })
+      return
+    }
+    if (micros <= 0n) {
+      setPhase({ kind: "error", reason: "invalid_amount" })
+      return
+    }
+
+    const result = await executeBridge({ privateKey: keypair.privateKey, amount: micros })
+    if (!alive.value) return
+
+    if (!result.ok) {
+      setPhase({ kind: "error", reason: result.reason, message: result.message })
+      return
+    }
+    setPhase({ kind: "success", details, bundleId: result.bundleId })
+  }
+
   const openStream = () => {
     if (subscription) return
     subscription = subscribeToOnrampEvents({
@@ -200,7 +265,14 @@ export function DialogOnrampCheckout() {
         const details = event.session?.transaction_details
         if (event.status === "fulfillment_complete") {
           applyBalanceUpdate(details)
-          setPhase({ kind: "success", details })
+          const current = phase()
+          const keypair =
+            current.kind === "confirm" || current.kind === "authenticating" ? current.keypair : undefined
+          if (keypair) void startBridge(details, keypair)
+          else
+            void ensureEvmKeypair()
+              .then((kp) => startBridge(details, kp))
+              .catch(() => setPhase({ kind: "error", reason: "missing_keypair" }))
           return
         }
         if (event.status === "rejected") {

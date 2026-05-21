@@ -15,15 +15,18 @@ import {
   type OnrampSubscription,
   type OnrampTransactionDetails,
 } from "@/utils/onramp-session"
+import { executeBridge } from "@/utils/bridge"
+import { usdcToMicros, type BridgeFailureReason } from "@opencode-ai/core/util/bridge"
 
-type ErrorReason = WalletCheckoutFailure | "stream_lost"
+type ErrorReason = WalletCheckoutFailure | "stream_lost" | BridgeFailureReason
 
 type Phase =
   | { kind: "loading" }
   | { kind: "confirm" }
   | { kind: "authenticating" }
   | { kind: "waiting"; status: OnrampStatus; oneTimeCode: string; details?: OnrampTransactionDetails }
-  | { kind: "success"; details?: OnrampTransactionDetails }
+  | { kind: "bridging"; details?: OnrampTransactionDetails }
+  | { kind: "success"; details?: OnrampTransactionDetails; bundleId?: string }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
   | { kind: "error"; reason: ErrorReason; message?: string }
 
@@ -36,6 +39,16 @@ const STEP_LABEL_KEYS = [
   "onramp.step.toSomaUsdc",
 ] as const
 
+const BRIDGE_REASONS: ReadonlySet<ErrorReason> = new Set<ErrorReason>([
+  "missing_paymaster_url",
+  "missing_amount",
+  "invalid_amount",
+  "user_op_failed",
+  "paymaster_rejected",
+  "network_error",
+  "unsupported_platform",
+])
+
 function computeSteps(phase: Phase): [StepStatus, StepStatus, StepStatus, StepStatus] {
   switch (phase.kind) {
     case "loading":
@@ -45,16 +58,19 @@ function computeSteps(phase: Phase): [StepStatus, StepStatus, StepStatus, StepSt
     case "authenticating":
       return ["done", "in_progress", "pending", "pending"]
     case "waiting":
-      if (phase.status === "fulfillment_complete") return ["done", "done", "done", "pending"]
+      if (phase.status === "fulfillment_complete") return ["done", "done", "done", "in_progress"]
       if (phase.status === "rejected") return ["done", "done", "error", "pending"]
       return ["done", "done", "in_progress", "pending"]
+    case "bridging":
+      return ["done", "done", "done", "in_progress"]
     case "success":
-      return ["done", "done", "done", "pending"]
+      return ["done", "done", "done", "done"]
     case "rejected":
       return ["done", "done", "error", "pending"]
     case "error":
       if (phase.reason === "unavailable") return ["error", "pending", "pending", "pending"]
       if (phase.reason === "stream_lost") return ["done", "done", "error", "pending"]
+      if (BRIDGE_REASONS.has(phase.reason)) return ["done", "done", "done", "error"]
       return ["done", "error", "pending", "pending"]
   }
 }
@@ -77,16 +93,21 @@ function StepProgress(props: { phase: Phase; errorMessage: () => string }) {
           return { index: 2, text: language.t("onramp.detail.requires_payment") }
         if (phase.status === "fulfillment_processing")
           return { index: 2, text: language.t("onramp.detail.fulfillment_processing") }
+        if (phase.status === "fulfillment_complete")
+          return { index: 3, text: language.t("onramp.detail.bridge_starting") }
         if (phase.status === "rejected")
           return { index: 2, text: language.t("onramp.detail.rejected") }
         return undefined
       }
+      case "bridging":
+        return { index: 3, text: language.t("onramp.detail.bridging") }
       case "rejected":
         return { index: 2, text: language.t("onramp.detail.rejected") }
       case "error": {
         let index = 1
         if (phase.reason === "unavailable") index = 0
         else if (phase.reason === "stream_lost") index = 2
+        else if (BRIDGE_REASONS.has(phase.reason)) index = 3
         return { index, text: props.errorMessage() }
       }
       default:
@@ -169,6 +190,37 @@ export const DialogOnrampCheckout: Component = () => {
   let subscription: OnrampSubscription | undefined
   const alive = { value: true }
 
+  const startBridge = async (details: OnrampTransactionDetails | undefined, fromAddress: string) => {
+    if (!alive.value) return
+    setPhase({ kind: "bridging", details })
+
+    const rawAmount = details?.destination_amount
+    if (!rawAmount) {
+      setPhase({ kind: "error", reason: "missing_amount" })
+      return
+    }
+    let micros: bigint
+    try {
+      micros = usdcToMicros(rawAmount)
+    } catch {
+      setPhase({ kind: "error", reason: "invalid_amount" })
+      return
+    }
+    if (micros <= 0n) {
+      setPhase({ kind: "error", reason: "invalid_amount" })
+      return
+    }
+
+    const result = await executeBridge({ fromAddress, amount: micros })
+    if (!alive.value) return
+
+    if (!result.ok) {
+      setPhase({ kind: "error", reason: result.reason, message: result.message })
+      return
+    }
+    setPhase({ kind: "success", details, bundleId: result.bundleId })
+  }
+
   const openStream = () => {
     if (subscription) return
     subscription = subscribeToOnrampEvents({
@@ -182,7 +234,7 @@ export const DialogOnrampCheckout: Component = () => {
         const details = event.session?.transaction_details
         if (event.status === "fulfillment_complete") {
           applyBalanceUpdate(details)
-          setPhase({ kind: "success", details })
+          void startBridge(details, wallet)
           return
         }
         if (event.status === "rejected") {
@@ -266,6 +318,20 @@ export const DialogOnrampCheckout: Component = () => {
         return current.message || language.t("onramp.error.network")
       case "stream_lost":
         return language.t("onramp.error.stream_lost")
+      case "missing_paymaster_url":
+        return language.t("onramp.error.missing_paymaster_url")
+      case "missing_amount":
+        return language.t("onramp.error.bridge_missing_amount")
+      case "invalid_amount":
+        return language.t("onramp.error.bridge_invalid_amount")
+      case "user_op_failed":
+        return current.message || language.t("onramp.error.bridge_failed")
+      case "paymaster_rejected":
+        return current.message || language.t("onramp.error.paymaster_rejected")
+      case "network_error":
+        return current.message || language.t("onramp.error.bridge_network")
+      case "unsupported_platform":
+        return language.t("onramp.error.bridge_unsupported")
       default:
         return language.t("common.requestFailed")
     }
