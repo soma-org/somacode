@@ -2,7 +2,6 @@ import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
-import { Spinner } from "@opencode-ai/ui/spinner"
 import { createMemo, createSignal, Match, onCleanup, onMount, Show, Switch, type Component } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
@@ -27,6 +26,135 @@ type Phase =
   | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
   | { kind: "error"; reason: ErrorReason; message?: string }
+
+type StepStatus = "pending" | "in_progress" | "done" | "error"
+
+const STEP_LABEL_KEYS = [
+  "onramp.step.wallet",
+  "onramp.step.verification",
+  "onramp.step.buyBaseUsdc",
+  "onramp.step.toSomaUsdc",
+] as const
+
+function computeSteps(phase: Phase): [StepStatus, StepStatus, StepStatus, StepStatus] {
+  switch (phase.kind) {
+    case "loading":
+      return ["in_progress", "pending", "pending", "pending"]
+    case "confirm":
+      return ["done", "pending", "pending", "pending"]
+    case "authenticating":
+      return ["done", "in_progress", "pending", "pending"]
+    case "waiting":
+      if (phase.status === "fulfillment_complete") return ["done", "done", "done", "pending"]
+      if (phase.status === "rejected") return ["done", "done", "error", "pending"]
+      return ["done", "done", "in_progress", "pending"]
+    case "success":
+      return ["done", "done", "done", "pending"]
+    case "rejected":
+      return ["done", "done", "error", "pending"]
+    case "error":
+      if (phase.reason === "unavailable") return ["error", "pending", "pending", "pending"]
+      if (phase.reason === "stream_lost") return ["done", "done", "error", "pending"]
+      return ["done", "error", "pending", "pending"]
+  }
+}
+
+function StepProgress(props: { phase: Phase; errorMessage: () => string }) {
+  const language = useLanguage()
+  const steps = createMemo(() => computeSteps(props.phase))
+
+  const detail = createMemo<{ index: number; text: string } | undefined>(() => {
+    const phase = props.phase
+    switch (phase.kind) {
+      case "loading":
+        return { index: 0, text: language.t("onramp.detail.loading") }
+      case "authenticating":
+        return { index: 1, text: language.t("onramp.detail.authenticating") }
+      case "waiting": {
+        if (phase.status === "initialized")
+          return { index: 2, text: language.t("onramp.detail.initialized") }
+        if (phase.status === "requires_payment")
+          return { index: 2, text: language.t("onramp.detail.requires_payment") }
+        if (phase.status === "fulfillment_processing")
+          return { index: 2, text: language.t("onramp.detail.fulfillment_processing") }
+        if (phase.status === "rejected")
+          return { index: 2, text: language.t("onramp.detail.rejected") }
+        return undefined
+      }
+      case "rejected":
+        return { index: 2, text: language.t("onramp.detail.rejected") }
+      case "error": {
+        let index = 1
+        if (phase.reason === "unavailable") index = 0
+        else if (phase.reason === "stream_lost") index = 2
+        return { index, text: props.errorMessage() }
+      }
+      default:
+        return undefined
+    }
+  })
+
+  const dotClasses = (status: StepStatus): string => {
+    if (status === "done") return "bg-icon-success-base text-text-on-success-base"
+    if (status === "error") return "bg-icon-critical-base text-text-on-critical-base"
+    if (status === "in_progress")
+      return "bg-icon-warning-base text-text-on-warning-base animate-pulse"
+    return "bg-surface-base text-text-weak border border-border-weak-base"
+  }
+
+  const connectorClass = (prev: StepStatus): string =>
+    prev === "done" ? "bg-icon-success-base" : "bg-border-weak-base"
+
+  const labelClass = (status: StepStatus): string =>
+    status === "pending" ? "text-text-weak" : "text-text-strong"
+
+  const detailIsError = createMemo(() => {
+    const d = detail()
+    if (!d) return false
+    return steps()[d.index] === "error"
+  })
+
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="flex items-start">
+        {STEP_LABEL_KEYS.map((labelKey, i) => (
+          <>
+            {i > 0 && <div class={`mt-[15px] h-px flex-1 ${connectorClass(steps()[i - 1])}`} />}
+            <div class="flex flex-col items-center gap-2 shrink-0 w-[88px]">
+              <div
+                class={`size-[30px] rounded-full flex items-center justify-center text-12-medium ${dotClasses(steps()[i])}`}
+              >
+                <Switch fallback={<span>{i + 1}</span>}>
+                  <Match when={steps()[i] === "done"}>
+                    <Icon name="check" class="size-4" />
+                  </Match>
+                  <Match when={steps()[i] === "error"}>
+                    <Icon name="close" class="size-4" />
+                  </Match>
+                </Switch>
+              </div>
+              <div class={`text-12-medium text-center leading-tight ${labelClass(steps()[i])}`}>
+                {language.t(labelKey)}
+              </div>
+            </div>
+          </>
+        ))}
+      </div>
+      <Show when={detail()}>
+        {(d) => (
+          <p
+            class={`text-12-regular text-center ${
+              detailIsError() ? "text-text-danger-base" : "text-text-weak"
+            }`}
+          >
+            {d().text}
+          </p>
+        )}
+      </Show>
+    </div>
+  )
+}
+
 
 export const DialogOnrampCheckout: Component = () => {
   const dialog = useDialog()
@@ -122,21 +250,6 @@ export const DialogOnrampCheckout: Component = () => {
     setPhase(platform.wallet ? { kind: "confirm" } : { kind: "error", reason: "unavailable" })
   }
 
-  const statusLabel = createMemo(() => {
-    const current = phase()
-    if (current.kind !== "waiting") return ""
-    switch (current.status) {
-      case "initialized":
-        return language.t("onramp.status.initialized")
-      case "requires_payment":
-        return language.t("onramp.status.requires_payment")
-      case "fulfillment_processing":
-        return language.t("onramp.status.fulfillment_processing")
-      default:
-        return language.t("onramp.status.unknown")
-    }
-  })
-
   const errorMessage = createMemo(() => {
     const current = phase()
     if (current.kind !== "error") return ""
@@ -161,14 +274,9 @@ export const DialogOnrampCheckout: Component = () => {
   return (
     <Dialog size="normal" transition title={language.t("onramp.dialog.title")}>
       <div class="flex flex-col gap-6 pb-4 pt-4 sm:px-5 sm:pb-8">
-        <Switch>
-          <Match when={phase().kind === "loading"}>
-            <div class="flex items-center gap-3 py-2">
-              <Spinner class="size-5 text-icon-strong-base" />
-              <span class="text-14-regular text-text-base">{language.t("onramp.preparing")}</span>
-            </div>
-          </Match>
+        <StepProgress phase={phase()} errorMessage={errorMessage} />
 
+        <Switch>
           <Match when={phase().kind === "confirm"}>
             <div class="flex flex-col gap-5">
               <p class="text-14-regular text-text-weak leading-normal">{language.t("onramp.confirm.body")}</p>
@@ -190,22 +298,11 @@ export const DialogOnrampCheckout: Component = () => {
             </div>
           </Match>
 
-          <Match when={phase().kind === "authenticating"}>
-            <div class="flex items-center gap-3 py-2">
-              <Spinner class="size-5 text-icon-strong-base" />
-              <span class="text-14-regular text-text-base">{language.t("onramp.preparing")}</span>
-            </div>
-          </Match>
-
           <Match when={phase().kind === "waiting"}>
             {(() => {
               const current = phase() as Extract<Phase, { kind: "waiting" }>
               return (
                 <div class="flex flex-col gap-4 py-2">
-                  <div class="flex items-center gap-3">
-                    <Spinner class="size-5 text-icon-strong-base" />
-                    <span class="text-14-regular text-text-base">{statusLabel()}</span>
-                  </div>
                   <p class="text-14-regular text-text-weak leading-normal">{language.t("onramp.code.hint")}</p>
                   <div class="flex items-center justify-center rounded-xl border border-border-weak-base bg-surface-base py-4">
                     <span class="text-[28px] font-mono font-medium tracking-[0.4em] text-text-strong tabular-nums">
