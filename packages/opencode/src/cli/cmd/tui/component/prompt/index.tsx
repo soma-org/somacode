@@ -1779,7 +1779,8 @@ export function Prompt(props: PromptProps) {
                     </Match>
                   </Switch>
                   <text fg={theme.text}>
-                    {paletteShortcut()} <span style={{ fg: theme.textMuted }}>commands</span>
+                    {paletteShortcut()} <span style={{ fg: theme.textMuted }}>·</span> /{" "}
+                    <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>
                 </Match>
                 <Match when={store.mode === "shell"}>
