@@ -10,7 +10,11 @@ export function useBalance() {
   const platform = usePlatform()
 
   onMount(() => {
-    void fetchBalance({ url: ENDPOINT, fetch: platform.fetch ?? fetch }).then((result) => {
+    void fetchBalance({
+      url: ENDPOINT,
+      fetch: platform.fetch ?? fetch,
+      address: points.walletAddress(),
+    }).then((result) => {
       if (!result.ok) return
       points.setUsdcBalance(result.usdcBalance)
       points.setBalance(result.pointsBalance)

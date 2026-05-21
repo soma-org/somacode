@@ -1735,16 +1735,12 @@ export function Prompt(props: PromptProps) {
             <Match when={true}>
               <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
                 <Show when={props.pointsBalance !== undefined}>
-                  <box flexDirection="row" flexShrink={0} gap={2} alignItems="center">
-                    <Show
-                      when={props.pointsBalance === 0 && (props.usdcBalance ?? 0) === 0}
-                      fallback={
-                        <>
-                          <text fg={theme.textMuted}>{props.pointsBalance!.toLocaleString()} points</text>
-                          <text fg={theme.textMuted}>{(props.usdcBalance ?? 0).toLocaleString()} USDC</text>
-                        </>
-                      }
-                    >
+                  <box flexDirection="column" flexShrink={0} gap={3}>
+                    <box flexDirection="row" flexShrink={0} gap={2} alignItems="center">
+                      <text fg={theme.textMuted}>{props.pointsBalance!.toLocaleString()} points</text>
+                      <text fg={theme.textMuted}>{(props.usdcBalance ?? 0).toLocaleString()} USDC</text>
+                    </box>
+                    <Show when={props.pointsBalance === 0 && (props.usdcBalance ?? 0) === 0}>
                       <text fg={theme.textMuted}>
                         Run <span style={{ fg: theme.accent }}>/buy-usdc</span> to deposit USDC
                       </text>

@@ -357,19 +357,18 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const args = useArgs()
   onMount(() => {
     const url = process.env.SOMACODE_BALANCE_GRAPHQL_URL?.trim() || undefined
-    void fetchBalance({ url }).then((result) => {
-      if (!result.ok) return
-      kv.set("usdc_balance", result.usdcBalance)
-      kv.set("points_balance", result.pointsBalance)
-    })
     const modelsUrl = process.env.SOMACODE_MODELS_GRAPHQL_URL?.trim() || undefined
     void fetchSupportedModels({ url: modelsUrl }).then((result) => {
       if (!result.ok) return
       kv.set("supported_models", result.models)
     })
     void ensureEvmKeypair()
-      .then((keypair) => {
+      .then(async (keypair) => {
         kv.set("wallet_address", keypair.address)
+        const result = await fetchBalance({ url, address: keypair.address })
+        if (!result.ok) return
+        kv.set("usdc_balance", result.usdcBalance)
+        kv.set("points_balance", result.pointsBalance)
       })
       .catch(() => {})
     batch(() => {
