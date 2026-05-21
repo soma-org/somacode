@@ -1,5 +1,5 @@
-import { TextAttributes } from "@opentui/core"
-import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js"
+import { RGBA, TextAttributes } from "@opentui/core"
+import { createSignal, Match, onCleanup, onMount, Show, Switch, createMemo } from "solid-js"
 import {
   isTerminalStatus,
   subscribeToOnrampEvents,
@@ -14,7 +14,6 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { useKV } from "@tui/context/kv"
 import { useBindings } from "../keymap"
-import { Spinner } from "./spinner"
 import { ensureEvmKeypair, signMessage, type EvmKeypair } from "../util/evm-keypair"
 import { openUrl } from "../util/open-url"
 import { useRenderer } from "@opentui/solid"
@@ -30,19 +29,105 @@ type Phase =
   | { kind: "rejected"; details?: OnrampTransactionDetails }
   | { kind: "error"; reason: ErrorReason }
 
-function statusLabel(status: OnrampStatus): string {
-  switch (status) {
-    case "initialized":
-      return "Waiting for you to start payment..."
-    case "requires_payment":
-      return "Waiting for payment..."
-    case "fulfillment_processing":
-      return "Processing your USDC..."
-    case "fulfillment_complete":
-      return "Purchase complete"
+type StepStatus = "pending" | "in_progress" | "done" | "error"
+
+const STEP_LABELS = ["Setup Wallet", "Verification", "Buy Base USDC", "To Soma USDC"] as const
+
+function computeSteps(phase: Phase): [StepStatus, StepStatus, StepStatus, StepStatus] {
+  switch (phase.kind) {
+    case "loading_keypair":
+      return ["in_progress", "pending", "pending", "pending"]
+    case "confirm":
+      return ["done", "pending", "pending", "pending"]
+    case "authenticating":
+      return ["done", "in_progress", "pending", "pending"]
+    case "waiting":
+      if (phase.status === "fulfillment_complete") return ["done", "done", "done", "pending"]
+      if (phase.status === "rejected") return ["done", "done", "error", "pending"]
+      if (phase.status === "initialized") return ["done", "done", "in_progress", "pending"]
+      return ["done", "done", "in_progress", "pending"]
+    case "success":
+      return ["done", "done", "done", "pending"]
     case "rejected":
-      return "Purchase rejected"
+      return ["done", "done", "error", "pending"]
+    case "error":
+      if (phase.reason === "missing_keypair") return ["error", "pending", "pending", "pending"]
+      if (phase.reason === "stream_lost") return ["done", "done", "error", "pending"]
+      return ["done", "error", "pending", "pending"]
   }
+}
+
+const STEP_DOT_GREEN = RGBA.fromHex("#22c55e")
+const STEP_DOT_RED = RGBA.fromHex("#ef4444")
+const STEP_DOT_PROGRESS = RGBA.fromHex("#eab308")
+
+function activeStepDetail(phase: Phase): { index: number; detail: string } | undefined {
+  switch (phase.kind) {
+    case "loading_keypair":
+      return { index: 0, detail: "Loading wallet from ~/.soma..." }
+    case "authenticating":
+      return { index: 1, detail: "Signing nonce..." }
+    case "waiting":
+      if (phase.status === "initialized") return { index: 2, detail: "Continue checkout in your browser..." }
+      if (phase.status === "requires_payment")
+        return { index: 2, detail: "Purchasing via Stripe Onramp or LiFi widget..." }
+      if (phase.status === "fulfillment_processing") return { index: 2, detail: "Processing your USDC..." }
+      if (phase.status === "rejected") return { index: 2, detail: "Payment was declined" }
+      return undefined
+    case "rejected":
+      return { index: 2, detail: "Payment was declined" }
+    case "error": {
+      let index = 1
+      if (phase.reason === "missing_keypair") index = 0
+      else if (phase.reason === "stream_lost") index = 2
+      return { index, detail: errorMessage(phase.reason) }
+    }
+    default:
+      return undefined
+  }
+}
+
+function StepProgress(props: { phase: Phase }) {
+  const { theme } = useTheme()
+  const [blink, setBlink] = createSignal(true)
+  onMount(() => {
+    const timer = setInterval(() => setBlink((b) => !b), 500)
+    onCleanup(() => clearInterval(timer))
+  })
+  const steps = createMemo(() => computeSteps(props.phase))
+  const detail = createMemo(() => activeStepDetail(props.phase))
+
+  const dotColor = (status: StepStatus) => {
+    if (status === "done") return STEP_DOT_GREEN
+    if (status === "error") return STEP_DOT_RED
+    if (status === "in_progress") return blink() ? STEP_DOT_PROGRESS : theme.textMuted
+    return theme.textMuted
+  }
+
+  const detailColor = (status: StepStatus) => {
+    if (status === "error") return STEP_DOT_RED
+    return theme.textMuted
+  }
+
+  return (
+    <box flexDirection="column" gap={0}>
+      {STEP_LABELS.map((label, i) => {
+        const status = () => steps()[i]
+        const activeDetail = () => (detail()?.index === i ? detail()!.detail : undefined)
+        return (
+          <>
+            <text>
+              <span style={{ fg: dotColor(status()) }}>●</span>
+              <span style={{ fg: status() === "pending" ? theme.textMuted : theme.text }}> {label}</span>
+            </text>
+            <Show when={activeDetail()}>
+              {(d) => <text fg={detailColor(status())}>{`   ${d()}`}</text>}
+            </Show>
+          </>
+        )
+      })}
+    </box>
+  )
 }
 
 function errorMessage(reason: ErrorReason): string {
@@ -255,14 +340,9 @@ export function DialogOnrampCheckout() {
         </text>
       </box>
 
-      <Switch>
-        <Match when={phase().kind === "loading_keypair"}>
-          <box gap={1}>
-            <Spinner color={theme.textMuted}>Loading wallet...</Spinner>
-            <box paddingBottom={1} />
-          </box>
-        </Match>
+      <StepProgress phase={phase()} />
 
+      <Switch>
         <Match when={phase().kind === "confirm"}>
           {(() => {
             const current = phase() as Extract<Phase, { kind: "confirm" }>
@@ -286,19 +366,11 @@ export function DialogOnrampCheckout() {
           })()}
         </Match>
 
-        <Match when={phase().kind === "authenticating"}>
-          <box gap={1}>
-            <Spinner color={theme.textMuted}>Signing in to payment backend...</Spinner>
-            <box paddingBottom={1} />
-          </box>
-        </Match>
-
         <Match when={phase().kind === "waiting"}>
           {(() => {
             const current = phase() as Extract<Phase, { kind: "waiting" }>
             return (
               <box gap={1}>
-                <Spinner color={theme.textMuted}>{statusLabel(current.status)}</Spinner>
                 <text fg={theme.textMuted} wrapMode="word">
                   A payment page has opened in your browser. Type this code to verify:
                 </text>
