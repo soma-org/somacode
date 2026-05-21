@@ -99,6 +99,11 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               </text>
               <text fg={theme.textMuted}>{pointsBalance().toLocaleString()} points</text>
               <text fg={theme.textMuted}>{usdcBalance().toLocaleString()} USDC</text>
+              <Show when={pointsBalance() === 0 && usdcBalance() === 0}>
+                <text fg={theme.textMuted}>
+                  Run <span style={{ fg: theme.accent }}>/buy-usdc</span> to deposit USDC
+                </text>
+              </Show>
             </box>
             <TuiPluginRuntime.Slot name="sidebar_content" session_id={props.sessionID} />
           </box>
