@@ -1359,6 +1359,11 @@ const scenarios: Scenario[] = [
     .probe({ path: "/global/upgrade", body: { target: 1 } })
     .at(() => ({ path: "/global/upgrade", body: { target: 1 } }))
     .status(400),
+  http.protected
+    .post("/global/wallet/checkout", "wallet.checkout")
+    .global()
+    .at(() => ({ path: "/global/wallet/checkout", body: {} }))
+    .status(200),
 ]
 
 const llmScenarios = new Set([

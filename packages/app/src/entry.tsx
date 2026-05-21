@@ -3,12 +3,16 @@
 import * as Sentry from "@sentry/solid"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
-import { type Platform, PlatformProvider, type WalletProvider } from "@/context/platform"
+import {
+  type Platform,
+  PlatformProvider,
+  type WalletCheckoutFailure,
+  type WalletProvider,
+} from "@/context/platform"
 import { dict as en } from "@/i18n/en"
 import { dict as zh } from "@/i18n/zh"
 import { handleNotificationClick } from "@/utils/notification-click"
-import { authFromToken } from "@/utils/server"
-import { readOnrampBaseUrl } from "@/utils/onramp-session"
+import { authFromToken, authTokenFromCredentials } from "@/utils/server"
 import pkg from "../package.json"
 import { ServerConnection } from "./context/server"
 
@@ -95,20 +99,51 @@ const restart: Platform["restart"] = async () => {
   window.location.reload()
 }
 
+function mapServerWalletReason(reason: string | undefined): WalletCheckoutFailure {
+  switch (reason) {
+    case "missing_gateway_url":
+    case "missing_intent_id":
+      return reason
+    case "missing_wallet_address":
+    case "unavailable":
+      return "unavailable"
+    case "nonce_failed":
+    case "register_failed":
+      return "auth_failed"
+    default:
+      return "network"
+  }
+}
+
 const wallet: WalletProvider = {
   async startCheckout() {
     try {
-      const res = await fetch(`${readOnrampBaseUrl()}/api/onramp/start`, {
+      const baseUrl = getCurrentUrl().replace(/\/+$/, "")
+      const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      }
+      if (auth) headers.Authorization = `Basic ${authTokenFromCredentials(auth)}`
+
+      const res = await fetch(`${baseUrl}/global/wallet/checkout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers,
+        body: "{}",
       })
       if (!res.ok) {
         return { ok: false, reason: res.status === 401 ? "auth_failed" : "network" }
       }
       const body = (await res.json()) as {
+        ok?: boolean
         redirectUrl?: string
         walletAddress?: string
         oneTimeCode?: string
+        reason?: string
+        message?: string
+      }
+      if (body.ok === false) {
+        return { ok: false, reason: mapServerWalletReason(body.reason), message: body.message }
       }
       if (
         typeof body.redirectUrl !== "string" ||

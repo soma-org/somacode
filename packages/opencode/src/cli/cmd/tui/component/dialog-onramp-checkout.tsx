@@ -1,19 +1,15 @@
 import { TextAttributes } from "@opentui/core"
 import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js"
 import {
-  authenticateWallet,
-  buildPaymentGatewayUrl,
-  generateOneTimeCode,
   isTerminalStatus,
   subscribeToOnrampEvents,
   walletAddressesMatch,
   DEFAULT_PAYMENT_GATEWAY_URL,
-  type AuthFailureReason,
-  type BuildGatewayUrlFailureReason,
   type OnrampStatus,
   type OnrampSubscription,
   type OnrampTransactionDetails,
 } from "@opencode-ai/core/util/onramp-session"
+import { runOnrampCheckout, type OnrampCheckoutFailureReason } from "@opencode-ai/core/util/wallet-checkout"
 import { useTheme } from "../context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { useKV } from "@tui/context/kv"
@@ -23,7 +19,7 @@ import { ensureEvmKeypair, signMessage, type EvmKeypair } from "../util/evm-keyp
 import { openUrl } from "../util/open-url"
 import { useRenderer } from "@opentui/solid"
 
-type ErrorReason = BuildGatewayUrlFailureReason | AuthFailureReason | "stream_lost" | "missing_keypair"
+type ErrorReason = OnrampCheckoutFailureReason | "stream_lost" | "missing_keypair"
 
 type Phase =
   | { kind: "loading_keypair" }
@@ -165,22 +161,15 @@ export function DialogOnrampCheckout() {
   const startCheckout = async (keypair: EvmKeypair) => {
     setPhase({ kind: "authenticating", keypair })
 
-    const oneTimeCode = generateOneTimeCode()
-    const auth = await authenticateWallet({
+    const result = await runOnrampCheckout({
       baseUrl,
+      gatewayUrl,
       publicKey: keypair.publicKey,
       address: keypair.address,
-      oneTimeCode,
       sign: (nonce) => signMessage(keypair.privateKey, nonce),
     })
 
     if (!alive.value) return
-    if (!auth.ok) {
-      setPhase({ kind: "error", reason: auth.reason })
-      return
-    }
-
-    const result = buildPaymentGatewayUrl({ intentId: auth.intent_id, gatewayUrl })
     if (!result.ok) {
       setPhase({ kind: "error", reason: result.reason })
       return
@@ -188,7 +177,7 @@ export function DialogOnrampCheckout() {
 
     setActiveWallet(keypair.address)
     setRedirectUrl(result.redirectUrl)
-    setPhase({ kind: "waiting", status: "initialized", oneTimeCode })
+    setPhase({ kind: "waiting", status: "initialized", oneTimeCode: result.oneTimeCode })
     openStream()
     void openUrl(renderer, result.redirectUrl)
   }

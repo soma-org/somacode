@@ -18,6 +18,7 @@ import { QuestionApi } from "./groups/question"
 import { SessionApi } from "./groups/session"
 import { SyncApi } from "./groups/sync"
 import { TuiApi } from "./groups/tui"
+import { WalletApi } from "./groups/wallet"
 import { WorkspaceApi } from "./groups/workspace"
 import { V2Api } from "./groups/v2"
 import { Authorization } from "./middleware/authorization"
@@ -30,6 +31,7 @@ const SyncEventSchemas = SyncEvent.effectPayloads()
 export const RootHttpApi = HttpApi.make("opencode-root")
   .addHttpApi(ControlApi)
   .addHttpApi(GlobalApi)
+  .addHttpApi(WalletApi)
   .middleware(SchemaErrorMiddleware)
   .middleware(Authorization)
 

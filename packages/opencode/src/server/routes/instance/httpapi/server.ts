@@ -75,6 +75,7 @@ import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
 import { tuiHandlers } from "./handlers/tui"
 import { v2Handlers } from "./handlers/v2"
+import { walletHandlers } from "./handlers/wallet"
 import { workspaceHandlers } from "./handlers/workspace"
 import { instanceContextLayer, instanceRouterMiddleware } from "./middleware/instance-context"
 import { workspaceRouterMiddleware, workspaceRoutingLayer } from "./middleware/workspace-routing"
@@ -114,7 +115,7 @@ const cors = (corsOptions?: CorsOptions) =>
 const authOnlyRouterLayer = authorizationRouterMiddleware.layer.pipe(Layer.provide(ServerAuth.Config.defaultLayer))
 const httpApiAuthLayer = authorizationLayer.pipe(Layer.provide(ServerAuth.Config.defaultLayer))
 const rootApiRoutes = HttpApiBuilder.layer(RootHttpApi).pipe(
-  Layer.provide([controlHandlers, globalHandlers]),
+  Layer.provide([controlHandlers, globalHandlers, walletHandlers]),
   Layer.provide(schemaErrorLayer),
   Layer.provide(httpApiAuthLayer),
 )

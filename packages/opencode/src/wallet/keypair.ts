@@ -3,26 +3,19 @@ import os from "node:os"
 import path from "node:path"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import type { Hex } from "viem"
-import {
-  runOnrampCheckout,
-  type OnrampCheckoutFailureReason,
-} from "@opencode-ai/core/util/wallet-checkout"
-import {
-  DEFAULT_ONRAMP_BASE_URL,
-  DEFAULT_PAYMENT_GATEWAY_URL,
-} from "@opencode-ai/core/util/onramp-session"
 
-type EvmKeypair = {
+export type EvmKeypair = {
   privateKey: Hex
   publicKey: Hex
   address: Hex
 }
 
-export type WalletCheckoutFailureReason = OnrampCheckoutFailureReason | "unavailable"
-
-export type WalletCheckoutResult =
-  | { ok: true; redirectUrl: string; walletAddress: string; oneTimeCode: string }
-  | { ok: false; reason: WalletCheckoutFailureReason; message?: string }
+export class EvmKeypairError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "EvmKeypairError"
+  }
+}
 
 function keypairDir(): string {
   return path.join(os.homedir(), ".soma")
@@ -76,7 +69,7 @@ async function keypairFileExists(): Promise<boolean> {
   }
 }
 
-async function loadKeypair(): Promise<EvmKeypair | null> {
+export async function loadEvmKeypair(): Promise<EvmKeypair | null> {
   try {
     const raw = await fs.readFile(keypairFile(), "utf8")
     return parseKeypair(raw)
@@ -96,14 +89,14 @@ async function createKeypair(): Promise<EvmKeypair> {
   return keypair
 }
 
-export async function ensureKeypair(): Promise<EvmKeypair> {
+export async function ensureEvmKeypair(): Promise<EvmKeypair> {
   if (pending) return pending
 
   pending = (async () => {
-    const existing = await loadKeypair()
+    const existing = await loadEvmKeypair()
     if (existing) return existing
     if (await keypairFileExists()) {
-      throw new Error("Failed to parse existing ~/.soma/evm_keypair.json")
+      throw new EvmKeypairError("Failed to parse existing ~/.soma/evm_keypair.json")
     }
     return createKeypair()
   })()
@@ -115,40 +108,7 @@ export async function ensureKeypair(): Promise<EvmKeypair> {
   }
 }
 
-function readEnvBaseUrl(): string {
-  return process.env.SOMACODE_ONRAMP_BASE_URL?.trim() || DEFAULT_ONRAMP_BASE_URL
-}
-
-function readEnvGatewayUrl(): string {
-  return (
-    process.env.VITE_SOMACODE_PAYMENT_GATEWAY_URL?.trim() ||
-    process.env.SOMACODE_PAYMENT_GATEWAY_URL?.trim() ||
-    DEFAULT_PAYMENT_GATEWAY_URL
-  )
-}
-
-export async function startCheckout(): Promise<WalletCheckoutResult> {
-  let keypair: EvmKeypair
-  try {
-    keypair = await ensureKeypair()
-  } catch (err) {
-    return { ok: false, reason: "unavailable", message: (err as Error)?.message }
-  }
-
-  const result = await runOnrampCheckout({
-    baseUrl: readEnvBaseUrl(),
-    gatewayUrl: readEnvGatewayUrl(),
-    publicKey: keypair.publicKey,
-    address: keypair.address,
-    sign: (nonce) => privateKeyToAccount(keypair.privateKey).signMessage({ message: nonce }),
-  })
-
-  if (!result.ok) return { ok: false, reason: result.reason }
-
-  return {
-    ok: true,
-    redirectUrl: result.redirectUrl,
-    walletAddress: result.walletAddress,
-    oneTimeCode: result.oneTimeCode,
-  }
+export async function signMessage(privateKey: Hex, message: string): Promise<Hex> {
+  const account = privateKeyToAccount(privateKey)
+  return account.signMessage({ message })
 }
