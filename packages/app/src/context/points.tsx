@@ -6,25 +6,29 @@ export const { use: usePoints, provider: PointsProvider } = createSimpleContext(
   name: "Points",
   init: () => {
     const storage = typeof globalThis.localStorage !== "undefined" ? globalThis.localStorage : undefined
-    const [balance, setBalance] = makePersisted(createSignal(0), {
-      name: "opencode.points.balance",
+    const [usdcSpentMicros, setUsdcSpentMicros] = makePersisted(createSignal(0n), {
+      name: "somacode.usdc.spent_micros",
       storage,
-    })
-    const [usdcBalance, setUsdcBalance] = makePersisted(createSignal(0), {
-      name: "opencode.usdc.balance",
-      storage,
+      serialize: (v) => v.toString(),
+      deserialize: (v) => BigInt(v),
     })
     const [walletAddress, setWalletAddress] = makePersisted(createSignal(""), {
-      name: "opencode.wallet.address",
+      name: "somacode.wallet.address",
       storage,
     })
+    const [walletUsdcMicros, setWalletUsdcMicros] = makePersisted(createSignal(0n), {
+      name: "somacode.wallet.usdc_micros",
+      storage,
+      serialize: (v) => v.toString(),
+      deserialize: (v) => BigInt(v),
+    })
     return {
-      balance,
-      setBalance,
-      usdcBalance,
-      setUsdcBalance,
+      usdcSpentMicros,
+      setUsdcSpentMicros,
       walletAddress,
       setWalletAddress,
+      walletUsdcMicros,
+      setWalletUsdcMicros,
     }
   },
 })

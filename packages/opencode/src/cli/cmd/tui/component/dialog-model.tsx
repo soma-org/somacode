@@ -41,6 +41,11 @@ export function DialogModel(props: { providerID?: string }) {
     const favorites = connected() ? local.model.favorite() : []
     const recents = local.model.recent()
 
+    // soma model picker is rendered flat — no provider headers at all.
+    // The provider routing happens behind the proxy; surfacing per-provider
+    // groupings here just leaks irrelevant infra detail to the user.
+    const isSomaOnly = supported().every((m) => m.providerID === "soma")
+
     function toOptions(items: typeof favorites, category: string) {
       if (!showSections) return []
       return items.flatMap((item) => {
@@ -51,8 +56,8 @@ export function DialogModel(props: { providerID?: string }) {
             key: item,
             value: { providerID: entry.providerID, modelID: entry.modelID },
             title: entry.name,
-            description: providerName(entry.providerID),
-            category,
+            description: isSomaOnly ? undefined : providerName(entry.providerID),
+            category: isSomaOnly ? undefined : category,
             footer: entry.free ? "Free" : undefined,
             onSelect: () => {
               onSelect(entry.providerID, entry.modelID)
@@ -79,7 +84,7 @@ export function DialogModel(props: { providerID?: string }) {
         description: favorites.some((item) => item.providerID === entry.providerID && item.modelID === entry.modelID)
           ? "(Favorite)"
           : undefined,
-        category: providerName(entry.providerID),
+        category: isSomaOnly ? undefined : providerName(entry.providerID),
         footer: entry.free ? "Free" : undefined,
         onSelect() {
           onSelect(entry.providerID, entry.modelID)

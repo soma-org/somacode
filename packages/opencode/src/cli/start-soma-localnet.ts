@@ -1,53 +1,29 @@
-import { spawn } from "node:child_process"
 import * as Log from "@opencode-ai/core/util/log"
+import * as Runtime from "@/soma/runtime"
 
-/**
- * Spawns `soma start localnet --force-regenesis` once per CLI process so embedded
- * provider stack is up before Somacode runs (see {@link shouldStartSomaLocalnet}).
- *
- * Uses `stdio: "ignore"`, `detached`, and no shell by default so nothing is printed
- * to the parent terminal and Windows does not open an extra `cmd.exe` window when
- * `soma` is a real `.exe` on `PATH`. If spawn fails with `ENOENT` on Windows because
- * only `soma.cmd` exists, set `SOMACODE_SOMA_LOCALNET_SHELL=1` to fall back to `shell: true`.
- */
-export function startSomaLocalnet(): void {
-  if (!shouldStartSomaLocalnet()) return
-
-  const args = ["start", "localnet", "--force-regenesis"] as const
-  const useShell = process.env.SOMACODE_SOMA_LOCALNET_SHELL === "1"
-  const child = spawn("soma", [...args], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    shell: useShell,
-  })
-
-  child.on("error", (err) => {
-    Log.Default.warn("soma-localnet", { message: String(err) })
-  })
-
-  child.unref()
-  Log.Default.info("soma-localnet", { pid: child.pid ?? null })
-}
+let pending: Promise<void> | undefined
 
 export function startSomaInferenceProxy(): void {
-  const useShell = process.env.SOMACODE_SOMA_LOCALNET_SHELL === "1"
-  const args = ["inference", "proxy"]
-  const indexerUrl = process.env.INDEXER_URL
-  if (indexerUrl) args.push("--index-url", indexerUrl)
-  const child = spawn("soma", args, {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    shell: useShell,
-  })
+  if (process.env.SOMACODE_SKIP_SOMA_PROXY === "1") return
+  if (pending) return
+  pending = Runtime.init()
+    .then((bootstrap) => {
+      process.env.SOMA_PROXY_BASE_URL = bootstrap.baseURL
+      process.env.SOMA_WALLET_ADDRESS = bootstrap.address
+      process.env.SOMA_STATUS_URL = bootstrap.statusUrl
+      Log.Default.info("soma-runtime", {
+        baseURL: bootstrap.baseURL,
+        address: bootstrap.address,
+        statusUrl: bootstrap.statusUrl,
+      })
+    })
+    .catch((err: unknown) => {
+      Log.Default.warn("soma-runtime", { message: String(err) })
+    })
+}
 
-  child.on("error", (err) => {
-    Log.Default.warn("soma-inference-proxy", { message: String(err) })
-  })
-
-  child.unref()
-  Log.Default.info("soma-inference-proxy", { pid: child.pid ?? null })
+export function awaitSomaProxy(): Promise<void> {
+  return pending ?? Promise.resolve()
 }
 
 export function shouldStartSomaLocalnet(): boolean {
@@ -58,4 +34,8 @@ export function shouldStartSomaLocalnet(): boolean {
   if (argv[0] === "attach") return false
   if (argv.includes("--attach")) return false
   return true
+}
+
+export function startSomaLocalnet(): void {
+  startSomaInferenceProxy()
 }

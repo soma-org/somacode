@@ -1,88 +1,45 @@
-export const DEFAULT_BALANCE_GRAPHQL_URL = "https://graphql.testnet.soma.org/graphql"
+export const DEFAULT_INDEXER_URL = "https://graphql.testnet.soma.org/graphql"
 
 const USDC_DECIMALS = 6n
 const USDC_DENOMINATOR = 10n ** USDC_DECIMALS
 
 export type BalanceResult =
-  | { ok: true; usdcBalance: number; pointsBalance: number }
-  | { ok: false; reason: "http_error" | "invalid_response" | "network_error" }
+  | { ok: true; walletUsdcMicros: bigint; usdcSpentMicros: bigint; address: string }
+  | { ok: false; reason: "http_error" | "invalid_response" | "network_error" | "no_address" }
 
-const QUERY = `query UsdcView($addr: String!) {
-  bridgeDeposits(recipient: $addr, afterNonce: -1, limit: 50) {
-    amount
-  }
-  channels(payer: $addr, first: 50) {
-    edges {
-      node {
-        token
-        deposit
-        settledAmount
-      }
-    }
-  }
-}`
+const BALANCE_QUERY = `query Bal($a: String!) { balance(address: $a) }`
+const CHANNELS_QUERY = `query Ch($a: String!) { channels(payer: $a, first: 200) { edges { node { settledAmount } } } }`
 
-function toBigInt(value: unknown): bigint {
-  if (typeof value !== "string" && typeof value !== "number") return 0n
-  try {
-    return BigInt(value)
-  } catch {
-    return 0n
-  }
+const post = async (url: string, query: string, variables: Record<string, unknown>, f: typeof fetch) => {
+  const res = await f(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ query, variables }),
+  })
+  if (!res.ok) throw new Error(`http ${res.status}`)
+  const json = (await res.json()) as { data?: unknown; errors?: { message: string }[] }
+  if (!json.data) throw new Error(json.errors?.[0]?.message ?? "no data")
+  return json.data
 }
 
-function microsToUsdc(micros: bigint): number {
-  if (micros <= 0n) return 0
-  const whole = micros / USDC_DENOMINATOR
-  const fraction = micros % USDC_DENOMINATOR
-  return Number(whole) + Number(fraction) / Number(USDC_DENOMINATOR)
-}
-
-const ZERO: BalanceResult = { ok: true, usdcBalance: 0, pointsBalance: 0 }
-
-export async function fetchBalance(
-  options: { url?: string; fetch?: typeof fetch; address?: string } = {},
-): Promise<BalanceResult> {
+export async function fetchBalance(options: { url?: string; address?: string; fetch?: typeof fetch } = {}): Promise<BalanceResult> {
+  const url = options.url ?? DEFAULT_INDEXER_URL
   const address = options.address?.trim()
-  if (!address) return ZERO
-
-  const url = options.url ?? DEFAULT_BALANCE_GRAPHQL_URL
+  if (!address) return { ok: false, reason: "no_address" }
   const f = options.fetch ?? fetch
-
-  try {
-    const res = await f(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ query: QUERY, variables: { addr: address } }),
-    })
-    if (!res.ok) return ZERO
-
-    const json = (await res.json().catch(() => undefined)) as
-      | {
-          data?: {
-            bridgeDeposits?: Array<{ amount?: unknown }>
-            channels?: { edges?: Array<{ node?: { token?: unknown; deposit?: unknown; settledAmount?: unknown } }> }
-          }
-        }
-      | undefined
-    if (!json?.data) return ZERO
-
-    let inbound = 0n
-    for (const d of json.data.bridgeDeposits ?? []) {
-      inbound += toBigInt(d?.amount)
-    }
-
-    let locked = 0n
-    for (const edge of json.data.channels?.edges ?? []) {
-      const node = edge?.node
-      if (!node || node.token !== "USDC") continue
-      locked += toBigInt(node.deposit)
-      locked += toBigInt(node.settledAmount)
-    }
-
-    const net = inbound > locked ? inbound - locked : 0n
-    return { ok: true, usdcBalance: microsToUsdc(net), pointsBalance: 0 }
-  } catch {
-    return ZERO
-  }
+  const result = await Promise.all([
+    post(url, BALANCE_QUERY, { a: address }, f),
+    post(url, CHANNELS_QUERY, { a: address }, f),
+  ]).catch(() => undefined)
+  if (!result) return { ok: false, reason: "network_error" }
+  const balanceData = result[0] as { balance?: string | number | null }
+  const channelsData = result[1] as { channels?: { edges?: { node?: { settledAmount?: string | number } }[] } }
+  if (balanceData.balance === undefined || balanceData.balance === null) return { ok: false, reason: "invalid_response" }
+  const walletUsdcMicros = BigInt(balanceData.balance)
+  const edges = channelsData.channels?.edges ?? []
+  const usdcSpentMicros = edges.reduce<bigint>(
+    (sum, edge) => sum + (edge.node?.settledAmount !== undefined ? BigInt(edge.node.settledAmount) : 0n),
+    0n,
+  )
+  return { ok: true, walletUsdcMicros, usdcSpentMicros, address }
 }

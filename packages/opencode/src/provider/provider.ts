@@ -1,6 +1,7 @@
 import os from "os"
 import fuzzysort from "fuzzysort"
 import { SOMACODE_EMBEDDED_PROVIDER_BASE_URL } from "@/cli/soma-embedded-provider"
+import * as SomaRuntime from "@/soma/runtime"
 import { Config } from "@/config/config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
@@ -415,6 +416,96 @@ export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
   }
 }
 
+const SOMA_PROVIDER_ID = ProviderID.make("soma")
+
+const friendlyName = (modelId: string) => {
+  const last = modelId.split("/").pop() ?? modelId
+  return last
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => (/^\d/.test(part) ? part : part[0].toUpperCase() + part.slice(1)))
+    .join(" ")
+}
+
+async function buildSomaProvider(
+  modelsDev: Record<string, ModelsDev.Provider>,
+): Promise<Info | undefined> {
+  const live = await SomaRuntime.listAvailableModels()
+  if (live.length === 0) return undefined
+  const models: Record<string, Model> = {}
+  for (const entry of live) {
+    const upstreamHint = (() => {
+      const [vendor] = entry.modelId.split("/")
+      const fromCatalog = modelsDev[vendor]?.models?.[entry.modelId]
+      return fromCatalog
+    })()
+    // Soma indexer reports prices in micros per 1K tokens (1 USDC = 1M micros).
+    // opencode's `Session.getUsage` expects `cost.input/output` in **USD per
+    // 1M tokens** (`tokens * cost / 1_000_000`). Conversion:
+    //   USD/1M = (micros/1K) × 1000 / 1_000_000 = (micros/1K) / 1000
+    const micros1kToUsd1m = (micros: bigint) => Number(micros) / 1000
+    const base: Model = {
+      id: ModelID.make(entry.modelId),
+      providerID: SOMA_PROVIDER_ID,
+      name: upstreamHint?.name ?? friendlyName(entry.modelId),
+      family: upstreamHint?.family,
+      api: {
+        id: entry.modelId,
+        url: SOMACODE_EMBEDDED_PROVIDER_BASE_URL,
+        npm: "@ai-sdk/openai-compatible",
+      },
+      status: "active",
+      headers: {},
+      options: {},
+      cost: {
+        input: micros1kToUsd1m(entry.bestOffering.promptMicrosPer1K),
+        output: micros1kToUsd1m(entry.bestOffering.completionMicrosPer1K),
+        cache: { read: 0, write: 0 },
+      },
+      limit: {
+        context: upstreamHint?.limit?.context ?? 128_000,
+        input: upstreamHint?.limit?.input,
+        output: upstreamHint?.limit?.output ?? 4096,
+      },
+      capabilities: {
+        temperature: upstreamHint?.temperature ?? true,
+        reasoning: upstreamHint?.reasoning ?? false,
+        attachment: upstreamHint?.attachment ?? false,
+        toolcall: upstreamHint?.tool_call ?? true,
+        input: {
+          text: upstreamHint?.modalities?.input?.includes("text") ?? true,
+          audio: upstreamHint?.modalities?.input?.includes("audio") ?? false,
+          image: upstreamHint?.modalities?.input?.includes("image") ?? false,
+          video: upstreamHint?.modalities?.input?.includes("video") ?? false,
+          pdf: upstreamHint?.modalities?.input?.includes("pdf") ?? false,
+        },
+        output: {
+          text: upstreamHint?.modalities?.output?.includes("text") ?? true,
+          audio: upstreamHint?.modalities?.output?.includes("audio") ?? false,
+          image: upstreamHint?.modalities?.output?.includes("image") ?? false,
+          video: upstreamHint?.modalities?.output?.includes("video") ?? false,
+          pdf: upstreamHint?.modalities?.output?.includes("pdf") ?? false,
+        },
+        interleaved: upstreamHint?.interleaved ?? false,
+      },
+      release_date: upstreamHint?.release_date ?? "",
+      variants: {},
+    }
+    models[entry.modelId] = {
+      ...base,
+      variants: mapValues(ProviderTransform.variants(base), (v) => v),
+    }
+  }
+  return {
+    id: SOMA_PROVIDER_ID,
+    source: "custom",
+    name: "Soma",
+    env: [],
+    options: {},
+    models,
+  }
+}
+
 const layer: Layer.Layer<
   Service,
   never,
@@ -436,6 +527,12 @@ const layer: Layer.Layer<
         const cfg = yield* config.get()
         const modelsDev = yield* modelsDevSvc.get()
         const database = mapValues(modelsDev, fromModelsDevProvider)
+
+        const somaProvider = yield* Effect.tryPromise({
+          try: () => buildSomaProvider(modelsDev),
+          catch: (e) => e,
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (somaProvider) database[somaProvider.id] = somaProvider
 
         const providers: Record<ProviderID, Info> = {} as Record<ProviderID, Info>
         const languages = new Map<string, LanguageModelV3>()
@@ -672,6 +769,10 @@ const layer: Layer.Layer<
           }
         }
 
+        if (somaProvider && isProviderAllowed(SOMA_PROVIDER_ID)) {
+          mergeProvider(SOMA_PROVIDER_ID, { source: "custom", options: {} })
+        }
+
         // load config - re-apply with updated data
         for (const [id, provider] of configProviders) {
           const providerID = ProviderID.make(id)
@@ -776,7 +877,7 @@ const layer: Layer.Layer<
           let url =
             typeof options["baseURL"] === "string" && options["baseURL"] !== "" ? options["baseURL"] : model.api.url
           if (
-            model.providerID.startsWith("opencode") &&
+            (model.providerID.startsWith("opencode") || model.providerID === "soma") &&
             !(typeof options["baseURL"] === "string" && options["baseURL"] !== "")
           ) {
             url = SOMACODE_EMBEDDED_PROVIDER_BASE_URL

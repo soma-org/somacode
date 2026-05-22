@@ -95,10 +95,10 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
             </TuiPluginRuntime.Slot>
             <box paddingRight={1} flexDirection="column" gap={0}>
               <text fg={theme.text}>
-                <b>Balance</b>
+                <b>Wallet</b>
               </text>
-              <text fg={theme.textMuted}>{pointsBalance().toLocaleString()} points</text>
-              <text fg={theme.textMuted}>{usdcBalance().toLocaleString()} USDC</text>
+              <text fg={theme.textMuted}>Balance: ${usdcBalance().toFixed(2)}</text>
+              <text fg={theme.textMuted}>Spent: ${pointsBalance().toFixed(4)}</text>
               <Show when={pointsBalance() === 0 && usdcBalance() === 0}>
                 <text fg={theme.textMuted}>
                   Run <span style={{ fg: theme.accent }}>/buy-usdc</span> to deposit USDC

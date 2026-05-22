@@ -168,6 +168,38 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
+const somaStatusRoute = HttpRouter.use((router) =>
+  router.add("GET", "/soma/status", () =>
+    Effect.gen(function* () {
+      const url = process.env.SOMA_STATUS_URL
+      if (!url) {
+        return HttpServerResponse.jsonUnsafe({
+          address: "",
+          walletUsdcMicros: "0",
+          usdcSpentMicros: "0",
+          liveProviders: 0,
+          ready: false,
+        })
+      }
+      const upstream = yield* Effect.tryPromise({
+        try: () => fetch(url).then((r) => r.text()),
+        catch: () => undefined,
+      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!upstream) {
+        return HttpServerResponse.jsonUnsafe({
+          address: process.env.SOMA_WALLET_ADDRESS ?? "",
+          walletUsdcMicros: "0",
+          usdcSpentMicros: "0",
+          liveProviders: 0,
+          ready: false,
+        })
+      }
+      const parsed = JSON.parse(upstream) as Record<string, unknown>
+      return HttpServerResponse.jsonUnsafe({ ...parsed, ready: true })
+    }),
+  ),
+).pipe(Layer.provide(authOnlyRouterLayer))
+
 const uiRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const fs = yield* AppFileSystem.Service
@@ -177,7 +209,7 @@ const uiRoute = HttpRouter.use((router) =>
 ).pipe(Layer.provide(authOnlyRouterLayer))
 
 export function createRoutes(corsOptions?: CorsOptions) {
-  return Layer.mergeAll(rootApiRoutes, eventApiRoutes, instanceRoutes, docRoute, uiRoute).pipe(
+  return Layer.mergeAll(rootApiRoutes, eventApiRoutes, instanceRoutes, docRoute, somaStatusRoute, uiRoute).pipe(
     Layer.provide([
       errorLayer,
       compressionLayer,

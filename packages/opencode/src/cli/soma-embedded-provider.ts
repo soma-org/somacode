@@ -1,8 +1,8 @@
-/** Base URL for the embedded Soma localnet OpenAI-compatible API. */
-export const SOMACODE_EMBEDDED_PROVIDER_BASE_URL = "http://127.0.0.1:9000"
+/** Base URL for the soma inference proxy. The runtime always binds it to 11434. */
+export const SOMACODE_EMBEDDED_PROVIDER_BASE_URL = "http://127.0.0.1:11434/v1"
 
 /**
- * Resolves when the embedded stack responds on `/v1/models` (or auth errors that
+ * Resolves when the soma proxy responds on `/v1/models` (or auth errors that
  * still prove the HTTP server is up).
  */
 export async function waitForSomacodeLocalnetReady(
@@ -12,7 +12,7 @@ export async function waitForSomacodeLocalnetReady(
   const timeoutMs = options?.timeoutMs ?? 120_000
   const intervalMs = options?.intervalMs ?? 800
   const deadline = Date.now() + timeoutMs
-  const url = `${SOMACODE_EMBEDDED_PROVIDER_BASE_URL}/v1/models`
+  const url = `${SOMACODE_EMBEDDED_PROVIDER_BASE_URL}/models`
   while (Date.now() < deadline) {
     if (signal.aborted) return false
     try {
@@ -20,7 +20,6 @@ export async function waitForSomacodeLocalnetReady(
       if (r.ok || r.status === 401 || r.status === 403) return true
     } catch {
       if (signal.aborted) return false
-      // ECONNREFUSED, etc.
     }
     await Bun.sleep(intervalMs)
     if (signal.aborted) return false

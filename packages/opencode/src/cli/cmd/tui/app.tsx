@@ -56,7 +56,6 @@ import { Session as SessionApi } from "@/session/session"
 import { TuiEvent } from "./event"
 import { KVProvider, useKV } from "./context/kv"
 import { Provider } from "@/provider/provider"
-import { fetchBalance } from "@opencode-ai/core/util/balance-query"
 import { fetchSupportedModels } from "@opencode-ai/core/util/models-query"
 import { ensureEvmKeypair } from "./util/evm-keypair"
 import { getSmartAccountAddress } from "@/wallet/smart-account"
@@ -252,6 +251,18 @@ export function tui(input: {
   })
 }
 
+// Format a `vendor/model-name` identifier into a human-friendly label for
+// the soma model picker. Preserves the dot inside version numbers
+// (`claude-haiku-4.5` → `Claude Haiku 4.5`).
+const somaFriendlyName = (modelId: string) => {
+  const last = modelId.split("/").pop() ?? modelId
+  return last
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => (/^\d/.test(part) ? part : part[0].toUpperCase() + part.slice(1)))
+    .join(" ")
+}
+
 function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const tuiConfig = useTuiConfig()
   const route = useRoute()
@@ -359,6 +370,10 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const args = useArgs()
   onMount(() => {
     const url = process.env.SOMACODE_BALANCE_GRAPHQL_URL?.trim() || undefined
+
+    // Wallet + total-spent are driven by `refreshSomaBalance` below, which
+    // reads directly from the soma runtime. The legacy GraphQL-mock-based
+    // `fetchBalance` path is intentionally removed.
     const modelsUrl = process.env.SOMACODE_MODELS_GRAPHQL_URL?.trim() || undefined
     void fetchSupportedModels({ url: modelsUrl }).then((result) => {
       if (!result.ok) return
@@ -374,6 +389,54 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         kv.set("points_balance", result.pointsBalance)
       })
       .catch(() => {})
+
+    // Soma testnet live offerings — replace the GraphQL/mock list above with
+    // models actually served by live providers on the payment-channel network.
+    // Refresh every 30s so the picker tracks provider liveness without
+    // requiring a TUI restart.
+    const refreshSomaModels = async () => {
+      try {
+        const runtime = await import("../../../soma/runtime")
+        const live = await runtime.listAvailableModels()
+        const supported = live.map((m) => ({
+          providerID: "soma",
+          modelID: m.modelId,
+          name: somaFriendlyName(m.modelId),
+        }))
+        if (supported.length > 0) kv.set("supported_models", supported)
+      } catch {
+        // soma runtime not ready or proxy still booting — keep the
+        // GraphQL/mock list as a fallback
+      }
+    }
+    void refreshSomaModels()
+    const somaModelsTimer = setInterval(refreshSomaModels, 30_000)
+    onCleanup(() => clearInterval(somaModelsTimer))
+
+    // Soma wallet + total settled — drives the sidebar. usdc_balance is the
+    // live wallet's USDC balance (what you can spend); points_balance is
+    // repurposed to carry cumulative USDC settled across channels (what
+    // you've already paid providers). Both are USDC, expressed in micros so
+    // we can render with 2-decimal precision in the prompt component.
+    const refreshSomaBalance = async () => {
+      try {
+        const runtime = await import("../../../soma/runtime")
+        const [wallet, spent] = await Promise.all([
+          runtime.walletUsdcMicros().catch(() => 0n),
+          runtime.usdcSpentMicros().catch(() => 0n),
+        ])
+        // The prompt component takes `number` props, so convert micros → USDC
+        // (1 USDC = 1_000_000 micros). BigInt → Number is safe within the
+        // payable balance range (max ~9e15 micros = $9B).
+        kv.set("usdc_balance", Number(wallet) / 1_000_000)
+        kv.set("points_balance", Number(spent) / 1_000_000)
+      } catch {
+        // soma runtime not ready yet — leave previous values in place
+      }
+    }
+    void refreshSomaBalance()
+    const somaBalanceTimer = setInterval(refreshSomaBalance, 15_000)
+    onCleanup(() => clearInterval(somaBalanceTimer))
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {

@@ -256,6 +256,12 @@ export const DialogOnrampCheckout: Component = () => {
     })
   }
 
+  const applyBalanceUpdate = (details?: OnrampTransactionDetails) => {
+    const amount = Number(details?.destination_amount ?? "")
+    if (!Number.isFinite(amount) || amount <= 0) return
+    points.setWalletUsdcMicros((current) => current + BigInt(Math.round(amount * 1_000_000)))
+  }
+
   onMount(() => {
     openStream()
     if (!platform.wallet) return

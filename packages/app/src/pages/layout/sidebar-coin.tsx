@@ -14,7 +14,9 @@ export const SidebarCoinBalance: Component<{ mobile?: boolean }> = () => {
     dialog.show(() => <DialogSidebarBalance />)
   }
 
-  const ariaLabel = createMemo(() => language.t("sidebar.points.aria", { count: points.balance() }))
+  const ariaLabel = createMemo(() =>
+    language.t("sidebar.points.aria", { spent: (Number(points.usdcSpentMicros()) / 1_000_000).toFixed(2) }),
+  )
 
   return (
     <IconButton
