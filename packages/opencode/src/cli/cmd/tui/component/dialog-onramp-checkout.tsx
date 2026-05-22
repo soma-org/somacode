@@ -191,12 +191,6 @@ function formatAmount(value?: string): string {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(n)
 }
 
-function shortenAddress(value?: string): string {
-  if (!value) return "—"
-  if (value.length <= 14) return value
-  return `${value.slice(0, 8)}…${value.slice(-6)}`
-}
-
 export function DialogOnrampCheckout() {
   const dialog = useDialog()
   const renderer = useRenderer()
@@ -210,6 +204,12 @@ export function DialogOnrampCheckout() {
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
   const [activeWallet, setActiveWallet] = createSignal<string | undefined>(undefined)
   const [smartAccountAddress, setSmartAccountAddress] = createSignal<string | undefined>(undefined)
+
+  const somaUsdcBalance = createMemo(() => {
+    if (!kv.ready) return 0
+    const v = kv.get("usdc_balance", 0)
+    return typeof v === "number" && !Number.isNaN(v) ? v : 0
+  })
 
   let subscription: OnrampSubscription | undefined
   const alive = { value: true }
@@ -457,10 +457,29 @@ export function DialogOnrampCheckout() {
           })()}
         </Match>
 
+        <Match when={phase().kind === "bridging"}>
+          {(() => {
+            const current = phase() as Extract<Phase, { kind: "bridging" }>
+            const details = current.details
+            return (
+              <box gap={1}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  Bridging to Soma USDC...
+                </text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  Received{" "}
+                  <span style={{ fg: theme.text }}>
+                    {formatAmount(details?.destination_amount)} {(details?.destination_currency ?? "USDC").toUpperCase()}
+                  </span>{" "}
+                  on Base. This may take 10–30 seconds.
+                </text>
+              </box>
+            )
+          })()}
+        </Match>
+
         <Match when={phase().kind === "success"}>
           {(() => {
-            const current = phase() as Extract<Phase, { kind: "success" }>
-            const details = current.details
             return (
               <box gap={1}>
                 <text fg={theme.success} attributes={TextAttributes.BOLD}>
@@ -468,21 +487,11 @@ export function DialogOnrampCheckout() {
                 </text>
                 <box gap={0}>
                   <text fg={theme.textMuted}>
-                    Received{" "}
-                    <span style={{ fg: theme.text }}>
-                      {formatAmount(details?.destination_amount)} {(details?.destination_currency ?? "").toUpperCase()}
-                    </span>{" "}
-                    on{" "}
-                    <span style={{ fg: theme.text }}>{details?.destination_network ?? "—"}</span>
+                    Soma wallet <span style={{ fg: theme.text }}>{smartAccountAddress() ?? "—"}</span>
                   </text>
                   <text fg={theme.textMuted}>
-                    Paid{" "}
-                    <span style={{ fg: theme.text }}>
-                      {formatAmount(details?.source_amount)} {(details?.source_currency ?? "").toUpperCase()}
-                    </span>
-                  </text>
-                  <text fg={theme.textMuted}>
-                    Wallet <span style={{ fg: theme.text }}>{shortenAddress(details?.wallet_address)}</span>
+                    Soma USDC balance{" "}
+                    <span style={{ fg: theme.text }}>${somaUsdcBalance().toFixed(2)}</span>
                   </text>
                 </box>
                 <box paddingBottom={1}>
