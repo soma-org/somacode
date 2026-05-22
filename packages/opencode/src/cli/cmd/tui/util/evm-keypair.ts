@@ -1,1 +1,1 @@
-export { ensureEvmKeypair, loadEvmKeypair, signMessage, EvmKeypairError, type EvmKeypair } from "@/wallet/keypair"
+export { ensureEvmKeypair, loadEvmKeypair, EvmKeypairError, type EvmKeypair } from "@/wallet/keypair"

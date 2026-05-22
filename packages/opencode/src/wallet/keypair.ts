@@ -108,7 +108,3 @@ export async function ensureEvmKeypair(): Promise<EvmKeypair> {
   }
 }
 
-export async function signMessage(privateKey: Hex, message: string): Promise<Hex> {
-  const account = privateKeyToAccount(privateKey)
-  return account.signMessage({ message })
-}

@@ -47,7 +47,7 @@ export async function runOnrampCheckout(options: RunOnrampCheckoutOptions): Prom
     sign: options.sign,
     fetch: options.fetch,
   })
-  if (!auth.ok) return { ok: false, reason: auth.reason }
+  if (!auth.ok) return { ok: false, reason: auth.reason, message: auth.message }
 
   const url = buildPaymentGatewayUrl({ intentId: auth.intent_id, gatewayUrl: options.gatewayUrl })
   if (!url.ok) return { ok: false, reason: url.reason }

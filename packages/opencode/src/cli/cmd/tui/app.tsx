@@ -59,6 +59,7 @@ import { Provider } from "@/provider/provider"
 import { fetchBalance } from "@opencode-ai/core/util/balance-query"
 import { fetchSupportedModels } from "@opencode-ai/core/util/models-query"
 import { ensureEvmKeypair } from "./util/evm-keypair"
+import { getSmartAccountAddress } from "@/wallet/smart-account"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import { openUrl } from "./util/open-url"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -365,8 +366,9 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
     void ensureEvmKeypair()
       .then(async (keypair) => {
-        kv.set("wallet_address", keypair.address)
-        const result = await fetchBalance({ url, address: keypair.address })
+        const smart = await getSmartAccountAddress(keypair.privateKey)
+        kv.set("wallet_address", smart)
+        const result = await fetchBalance({ url, address: smart })
         if (!result.ok) return
         kv.set("usdc_balance", result.usdcBalance)
         kv.set("points_balance", result.pointsBalance)

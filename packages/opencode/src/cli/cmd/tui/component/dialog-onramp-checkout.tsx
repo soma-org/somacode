@@ -16,7 +16,8 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { useKV } from "@tui/context/kv"
 import { useBindings } from "../keymap"
-import { ensureEvmKeypair, signMessage, type EvmKeypair } from "../util/evm-keypair"
+import { ensureEvmKeypair, type EvmKeypair } from "../util/evm-keypair"
+import { getSmartAccountAddress, signNonceForSmartAccount } from "@/wallet/smart-account"
 import { openUrl } from "../util/open-url"
 import { useRenderer } from "@opentui/solid"
 
@@ -208,6 +209,7 @@ export function DialogOnrampCheckout() {
   const [phase, setPhase] = createSignal<Phase>({ kind: "loading_keypair" })
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
   const [activeWallet, setActiveWallet] = createSignal<string | undefined>(undefined)
+  const [smartAccountAddress, setSmartAccountAddress] = createSignal<string | undefined>(undefined)
 
   let subscription: OnrampSubscription | undefined
   const alive = { value: true }
@@ -298,9 +300,12 @@ export function DialogOnrampCheckout() {
     dialog.setSize("medium")
     openStream()
     void ensureEvmKeypair()
-      .then((keypair) => {
+      .then(async (keypair) => {
         if (!alive.value) return
-        kv.set("wallet_address", keypair.address)
+        const smart = await getSmartAccountAddress(keypair.privateKey)
+        if (!alive.value) return
+        setSmartAccountAddress(smart)
+        kv.set("wallet_address", smart)
         setPhase({ kind: "confirm", keypair })
       })
       .catch(() => {
@@ -318,21 +323,25 @@ export function DialogOnrampCheckout() {
   const startCheckout = async (keypair: EvmKeypair) => {
     setPhase({ kind: "authenticating", keypair })
 
+    const smart = smartAccountAddress() ?? (await getSmartAccountAddress(keypair.privateKey))
+    if (!alive.value) return
+    if (!smartAccountAddress()) setSmartAccountAddress(smart)
+
     const result = await runOnrampCheckout({
       baseUrl,
       gatewayUrl,
       publicKey: keypair.publicKey,
-      address: keypair.address,
-      sign: (nonce) => signMessage(keypair.privateKey, nonce),
+      address: smart,
+      sign: (nonce) => signNonceForSmartAccount(keypair.privateKey, nonce),
     })
 
     if (!alive.value) return
     if (!result.ok) {
-      setPhase({ kind: "error", reason: result.reason })
+      setPhase({ kind: "error", reason: result.reason, message: result.message })
       return
     }
 
-    setActiveWallet(keypair.address)
+    setActiveWallet(smart)
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized", oneTimeCode: result.oneTimeCode })
     openStream()
@@ -421,11 +430,11 @@ export function DialogOnrampCheckout() {
             return (
               <box gap={1}>
                 <text fg={theme.textMuted} wrapMode="word">
-                  USDC will be delivered to your soma wallet:
+                  USDC will be delivered to your soma smart wallet:
                 </text>
-                <text fg={theme.text}>{current.keypair.address}</text>
+                <text fg={theme.text}>{smartAccountAddress() ?? current.keypair.address}</text>
                 <text fg={theme.textMuted} wrapMode="word">
-                  Stored in ~/.soma/evm_keypair.json. Keep this file safe.
+                  Owner key stored in ~/.soma/evm_keypair.json. Keep this file safe.
                 </text>
                 <box paddingBottom={1}>
                   <text fg={theme.textMuted}>
@@ -526,7 +535,7 @@ export function DialogOnrampCheckout() {
                   Onramp error
                 </text>
                 <text fg={theme.textMuted} wrapMode="word">
-                  {errorMessage(current.reason)}
+                  {current.message ?? errorMessage(current.reason)}
                 </text>
                 <box paddingBottom={1}>
                   <text fg={theme.textMuted}>

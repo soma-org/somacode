@@ -5,6 +5,7 @@ import { useDialog } from "@tui/ui/dialog"
 import { useBindings } from "../keymap"
 import { ensureEvmKeypair, type EvmKeypair } from "../util/evm-keypair"
 import { executeBridge } from "@/wallet/bridge"
+import { getSmartAccountAddress } from "@/wallet/smart-account"
 import {
   SOMA_RECIPIENT,
   usdcToMicros,
@@ -54,13 +55,17 @@ export function DialogBridgeTest() {
 
   const [phase, setPhase] = createSignal<Phase>({ kind: "loading" })
   const [amount, setAmount] = createSignal(DEFAULT_AMOUNT)
+  const [smartAccountAddress, setSmartAccountAddress] = createSignal<string | undefined>(undefined)
   const alive = { value: true }
 
   onMount(() => {
     dialog.setSize("medium")
     void ensureEvmKeypair()
-      .then((keypair) => {
+      .then(async (keypair) => {
         if (!alive.value) return
+        const smart = await getSmartAccountAddress(keypair.privateKey)
+        if (!alive.value) return
+        setSmartAccountAddress(smart)
         setPhase({ kind: "ready", keypair })
       })
       .catch(() => {
@@ -155,8 +160,8 @@ export function DialogBridgeTest() {
             const current = phase() as Extract<Phase, { kind: "ready" }>
             return (
               <box gap={1}>
-                <text fg={theme.textMuted}>From</text>
-                <text fg={theme.text}>{current.keypair.address}</text>
+                <text fg={theme.textMuted}>From (smart account — fund this address)</text>
+                <text fg={theme.text}>{smartAccountAddress() ?? current.keypair.address}</text>
                 <text fg={theme.textMuted}>To Soma recipient (hardcoded)</text>
                 <text fg={theme.text}>{SOMA_RECIPIENT}</text>
                 <text fg={theme.textMuted}>Amount (USDC)</text>

@@ -1,4 +1,6 @@
-import { ensureEvmKeypair, signMessage } from "@/wallet/keypair"
+import { ensureEvmKeypair } from "@/wallet/keypair"
+import { ensureAutoBridge } from "@/wallet/auto-bridge"
+import { getSmartAccountAddress, signNonceForSmartAccount } from "@/wallet/smart-account"
 import { runOnrampCheckout } from "@opencode-ai/core/util/wallet-checkout"
 import { DEFAULT_PAYMENT_GATEWAY_URL } from "@opencode-ai/core/util/onramp-session"
 import { Effect } from "effect"
@@ -24,12 +26,14 @@ export const walletHandlers = HttpApiBuilder.group(RootHttpApi, "wallet", (handl
       return yield* Effect.promise(async () => {
         try {
           const keypair = await ensureEvmKeypair()
+          const smartAccountAddress = await getSmartAccountAddress(keypair.privateKey)
+          void ensureAutoBridge()
           return await runOnrampCheckout({
             publicKey: keypair.publicKey,
-            address: keypair.address,
+            address: smartAccountAddress,
             baseUrl: ctx.payload.baseUrl ?? readEnvBaseUrl(),
             gatewayUrl: ctx.payload.gatewayUrl ?? readEnvGatewayUrl(),
-            sign: (nonce) => signMessage(keypair.privateKey, nonce),
+            sign: (nonce) => signNonceForSmartAccount(keypair.privateKey, nonce),
           })
         } catch (err) {
           return {

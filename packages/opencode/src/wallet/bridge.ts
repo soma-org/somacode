@@ -1,12 +1,11 @@
-import { createPublicClient, http, type Hex } from "viem"
-import { privateKeyToAccount } from "viem/accounts"
-import { createBundlerClient, createPaymasterClient, toCoinbaseSmartAccount } from "viem/account-abstraction"
-import { baseSepolia } from "viem/chains"
+import { http, type Hex } from "viem"
+import { createBundlerClient, createPaymasterClient } from "viem/account-abstraction"
 import {
   buildBridgeCalls,
   SOMA_RECIPIENT,
   type BridgeResult,
 } from "@opencode-ai/core/util/bridge"
+import { createBaseSepoliaPublicClient, createSmartAccount } from "./smart-account"
 
 export type ExecuteBridgeOptions = {
   privateKey: Hex
@@ -17,8 +16,6 @@ export type ExecuteBridgeOptions = {
   rpcUrl?: string
 }
 
-const DEFAULT_BASE_SEPOLIA_RPC = "https://sepolia.base.org"
-
 export async function executeBridge(options: ExecuteBridgeOptions): Promise<BridgeResult> {
   if (options.amount <= 0n) return { ok: false, reason: "invalid_amount" }
 
@@ -26,19 +23,10 @@ export async function executeBridge(options: ExecuteBridgeOptions): Promise<Brid
   if (!paymasterUrl) return { ok: false, reason: "missing_paymaster_url" }
 
   const bundlerUrl = options.bundlerUrl?.trim() || process.env.BASE_BUNDLER_URL?.trim() || paymasterUrl
-  const rpcUrl = options.rpcUrl?.trim() || process.env.BASE_SEPOLIA_RPC_URL?.trim() || DEFAULT_BASE_SEPOLIA_RPC
 
   try {
-    const owner = privateKeyToAccount(options.privateKey)
-    const publicClient = createPublicClient({
-      chain: baseSepolia,
-      transport: http(rpcUrl),
-    })
-
-    const account = await toCoinbaseSmartAccount({
-      client: publicClient,
-      owners: [owner],
-    })
+    const publicClient = createBaseSepoliaPublicClient(options.rpcUrl)
+    const account = await createSmartAccount(options.privateKey, publicClient)
 
     const paymaster = createPaymasterClient({ transport: http(paymasterUrl) })
     const bundler = createBundlerClient({

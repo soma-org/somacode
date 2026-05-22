@@ -15,10 +15,13 @@ import {
   type OnrampSubscription,
   type OnrampTransactionDetails,
 } from "@/utils/onramp-session"
-import { executeBridge } from "@/utils/bridge"
-import { usdcToMicros, type BridgeFailureReason } from "@opencode-ai/core/util/bridge"
+import { fetchBalance } from "@opencode-ai/core/util/balance-query"
 
-type ErrorReason = WalletCheckoutFailure | "stream_lost" | BridgeFailureReason
+const BALANCE_GRAPHQL_URL = ((import.meta.env.VITE_BALANCE_GRAPHQL_URL as string | undefined) ?? "").trim() || undefined
+const BRIDGE_POLL_INTERVAL_MS = 5000
+const BRIDGE_POLL_TIMEOUT_MS = 180_000
+
+type ErrorReason = WalletCheckoutFailure | "stream_lost" | "bridge_timeout"
 
 type Phase =
   | { kind: "loading" }
@@ -26,7 +29,7 @@ type Phase =
   | { kind: "authenticating" }
   | { kind: "waiting"; status: OnrampStatus; oneTimeCode: string; details?: OnrampTransactionDetails }
   | { kind: "bridging"; details?: OnrampTransactionDetails }
-  | { kind: "success"; details?: OnrampTransactionDetails; bundleId?: string }
+  | { kind: "success"; details?: OnrampTransactionDetails }
   | { kind: "rejected"; details?: OnrampTransactionDetails }
   | { kind: "error"; reason: ErrorReason; message?: string }
 
@@ -39,15 +42,7 @@ const STEP_LABEL_KEYS = [
   "onramp.step.toSomaUsdc",
 ] as const
 
-const BRIDGE_REASONS: ReadonlySet<ErrorReason> = new Set<ErrorReason>([
-  "missing_paymaster_url",
-  "missing_amount",
-  "invalid_amount",
-  "user_op_failed",
-  "paymaster_rejected",
-  "network_error",
-  "unsupported_platform",
-])
+const BRIDGE_REASONS: ReadonlySet<ErrorReason> = new Set<ErrorReason>(["bridge_timeout"])
 
 function computeSteps(phase: Phase): [StepStatus, StepStatus, StepStatus, StepStatus] {
   switch (phase.kind) {
@@ -190,35 +185,41 @@ export const DialogOnrampCheckout: Component = () => {
   let subscription: OnrampSubscription | undefined
   const alive = { value: true }
 
-  const startBridge = async (details: OnrampTransactionDetails | undefined, fromAddress: string) => {
+  const waitForBridgeCredit = async (details: OnrampTransactionDetails | undefined, walletAddress: string) => {
     if (!alive.value) return
     setPhase({ kind: "bridging", details })
 
-    const rawAmount = details?.destination_amount
-    if (!rawAmount) {
-      setPhase({ kind: "error", reason: "missing_amount" })
-      return
-    }
-    let micros: bigint
-    try {
-      micros = usdcToMicros(rawAmount)
-    } catch {
-      setPhase({ kind: "error", reason: "invalid_amount" })
-      return
-    }
-    if (micros <= 0n) {
-      setPhase({ kind: "error", reason: "invalid_amount" })
-      return
-    }
-
-    const result = await executeBridge({ fromAddress, amount: micros })
+    const expectedDelta = Number(details?.destination_amount ?? "")
+    const baseline = await fetchBalance({
+      url: BALANCE_GRAPHQL_URL,
+      fetch: platform.fetch ?? fetch,
+      address: walletAddress,
+    })
     if (!alive.value) return
+    const baselineUsdc = baseline.ok ? baseline.usdcBalance : points.usdcBalance()
+    // Soma indexer reports in micros; allow a tiny epsilon (1c) for float reconstruction.
+    const target = baselineUsdc + (Number.isFinite(expectedDelta) && expectedDelta > 0 ? expectedDelta - 0.01 : 0)
 
-    if (!result.ok) {
-      setPhase({ kind: "error", reason: result.reason, message: result.message })
-      return
+    const deadline = Date.now() + BRIDGE_POLL_TIMEOUT_MS
+    while (alive.value) {
+      await new Promise((resolve) => setTimeout(resolve, BRIDGE_POLL_INTERVAL_MS))
+      if (!alive.value) return
+      const result = await fetchBalance({
+        url: BALANCE_GRAPHQL_URL,
+        fetch: platform.fetch ?? fetch,
+        address: walletAddress,
+      })
+      if (!alive.value) return
+      if (result.ok && result.usdcBalance > target) {
+        points.setUsdcBalance(result.usdcBalance)
+        setPhase({ kind: "success", details })
+        return
+      }
+      if (Date.now() >= deadline) {
+        setPhase({ kind: "error", reason: "bridge_timeout" })
+        return
+      }
     }
-    setPhase({ kind: "success", details, bundleId: result.bundleId })
   }
 
   const openStream = () => {
@@ -233,8 +234,7 @@ export const DialogOnrampCheckout: Component = () => {
 
         const details = event.session?.transaction_details
         if (event.status === "fulfillment_complete") {
-          applyBalanceUpdate(details)
-          void startBridge(details, wallet)
+          void waitForBridgeCredit(details, wallet)
           return
         }
         if (event.status === "rejected") {
@@ -254,12 +254,6 @@ export const DialogOnrampCheckout: Component = () => {
         }
       },
     })
-  }
-
-  const applyBalanceUpdate = (details?: OnrampTransactionDetails) => {
-    const amount = Number(details?.destination_amount ?? "")
-    if (!Number.isFinite(amount) || amount <= 0) return
-    points.setUsdcBalance((current) => current + amount)
   }
 
   onMount(() => {
@@ -318,20 +312,8 @@ export const DialogOnrampCheckout: Component = () => {
         return current.message || language.t("onramp.error.network")
       case "stream_lost":
         return language.t("onramp.error.stream_lost")
-      case "missing_paymaster_url":
-        return language.t("onramp.error.missing_paymaster_url")
-      case "missing_amount":
-        return language.t("onramp.error.bridge_missing_amount")
-      case "invalid_amount":
-        return language.t("onramp.error.bridge_invalid_amount")
-      case "user_op_failed":
-        return current.message || language.t("onramp.error.bridge_failed")
-      case "paymaster_rejected":
-        return current.message || language.t("onramp.error.paymaster_rejected")
-      case "network_error":
-        return current.message || language.t("onramp.error.bridge_network")
-      case "unsupported_platform":
-        return language.t("onramp.error.bridge_unsupported")
+      case "bridge_timeout":
+        return language.t("onramp.error.bridge_timeout")
       default:
         return language.t("common.requestFailed")
     }

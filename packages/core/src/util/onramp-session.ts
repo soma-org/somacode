@@ -67,7 +67,9 @@ export function buildPaymentGatewayUrl(options: BuildGatewayUrlOptions): BuildGa
 
 export type AuthFailureReason = "nonce_failed" | "register_failed"
 
-export type AuthResult = { ok: true; intent_id: string } | { ok: false; reason: AuthFailureReason }
+export type AuthResult =
+  | { ok: true; intent_id: string }
+  | { ok: false; reason: AuthFailureReason; message?: string }
 
 export type AuthOptions = {
   baseUrl?: string
@@ -110,26 +112,81 @@ async function fetchNonce(baseUrl: string, f: typeof fetch): Promise<string | nu
   }
 }
 
+type RegisterResult =
+  | { ok: true; intent_id: string }
+  | { ok: false; status: number; code?: string; message?: string }
+
+function asRecord(v: unknown): Record<string, unknown> | undefined {
+  return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : undefined
+}
+
+function asNonEmptyString(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined
+}
+
 async function postRegister(
   baseUrl: string,
   payload: { publicKey: string; address: string; signature: string; nonce: string; otp: string },
   f: typeof fetch,
-): Promise<{ intent_id: string } | null> {
+): Promise<RegisterResult> {
+  let res: Response
   try {
-    const res = await f(`${baseUrl}/api/auth/register`, {
+    res = await f(`${baseUrl}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(payload),
     })
-    if (!res.ok) return null
-    const body = (await res.json()) as unknown
-    if (typeof body !== "object" || body === null) return null
-    const { intent_id } = body as Record<string, unknown>
-    if (typeof intent_id !== "string" || !intent_id) return null
-    return { intent_id }
-  } catch {
-    return null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error("[wallet-auth] /api/auth/register fetch failed:", message)
+    return { ok: false, status: 0, message: `network error: ${message}` }
   }
+
+  const raw = await res.text().catch(() => "")
+  let parsed: unknown
+  try {
+    parsed = raw ? JSON.parse(raw) : undefined
+  } catch {
+    parsed = undefined
+  }
+  const record = asRecord(parsed)
+
+  if (!res.ok) {
+    const code = record ? asNonEmptyString(record.code) : undefined
+    const message = record ? asNonEmptyString(record.message) : undefined
+    console.error("[wallet-auth] /api/auth/register rejected:", {
+      status: res.status,
+      code,
+      message,
+      raw: raw.slice(0, 500),
+    })
+    return { ok: false, status: res.status, code, message }
+  }
+
+  if (!record) {
+    console.error("[wallet-auth] /api/auth/register: non-JSON success body:", {
+      status: res.status,
+      raw: raw.slice(0, 500),
+    })
+    return { ok: false, status: res.status, message: "non-JSON response body" }
+  }
+
+  const intent_id = asNonEmptyString(record.intent_id)
+  if (!intent_id) {
+    const keys = Object.keys(record)
+    console.error("[wallet-auth] /api/auth/register: success body missing intent_id:", {
+      status: res.status,
+      keys,
+      body: record,
+    })
+    return {
+      ok: false,
+      status: res.status,
+      message: `success body missing intent_id; got keys: [${keys.join(", ")}]`,
+    }
+  }
+
+  return { ok: true, intent_id }
 }
 
 export async function authenticateWallet(options: AuthOptions): Promise<AuthResult> {
@@ -142,8 +199,10 @@ export async function authenticateWallet(options: AuthOptions): Promise<AuthResu
   let signature: string
   try {
     signature = await options.sign(nonce)
-  } catch {
-    return { ok: false, reason: "register_failed" }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error("[wallet-auth] sign(nonce) threw:", message)
+    return { ok: false, reason: "register_failed", message: `sign failed: ${message}` }
   }
 
   const registered = await postRegister(
@@ -157,9 +216,14 @@ export async function authenticateWallet(options: AuthOptions): Promise<AuthResu
     },
     f,
   )
-  if (!registered) return { ok: false, reason: "register_failed" }
+  if (!registered.ok) {
+    const detail = registered.code
+      ? `${registered.code}: ${registered.message ?? "(no message)"}`
+      : registered.message
+    return { ok: false, reason: "register_failed", message: detail }
+  }
 
-  return { ok: true, ...registered }
+  return { ok: true, intent_id: registered.intent_id }
 }
 
 export function walletAddressesMatch(a?: string, b?: string): boolean {
