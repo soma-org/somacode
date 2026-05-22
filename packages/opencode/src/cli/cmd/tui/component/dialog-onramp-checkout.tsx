@@ -226,22 +226,8 @@ export function DialogOnrampCheckout() {
     if (!alive.value) return
     setPhase({ kind: "bridging", details })
 
-    const rawAmount = details?.destination_amount
-    if (!rawAmount) {
-      setPhase({ kind: "error", reason: "missing_amount" })
-      return
-    }
-    let micros: bigint
-    try {
-      micros = usdcToMicros(rawAmount)
-    } catch {
-      setPhase({ kind: "error", reason: "invalid_amount" })
-      return
-    }
-    if (micros <= 0n) {
-      setPhase({ kind: "error", reason: "invalid_amount" })
-      return
-    }
+    // Testing: bridge a fixed 0.1 USDC after onramp completes regardless of the purchased amount.
+    const micros = usdcToMicros("0.1")
 
     const result = await executeBridge({ privateKey: keypair.privateKey, amount: micros })
     if (!alive.value) return

@@ -41,7 +41,6 @@ import { DialogAgent } from "@tui/component/dialog-agent"
 import { DialogSessionList } from "@tui/component/dialog-session-list"
 import { DialogConsoleOrg } from "@tui/component/dialog-console-org"
 import { DialogOnrampCheckout } from "@tui/component/dialog-onramp-checkout"
-import { DialogBridgeTest } from "@tui/component/dialog-bridge-test"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
@@ -552,16 +551,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         desc: "Top up USDC via Stripe Crypto onramp",
         run: () => {
           dialog.replace(() => <DialogOnrampCheckout />, { dismissable: false })
-        },
-      },
-      {
-        name: "balance.bridge_test",
-        title: "Test bridge",
-        category: "Account",
-        slashName: "bridge-test",
-        desc: "Bridge Base USDC to Soma USDC (testing — bypasses onramp)",
-        run: () => {
-          dialog.replace(() => <DialogBridgeTest />)
         },
       },
       {

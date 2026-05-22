@@ -1,3 +1,6 @@
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { createPublicClient, http, type Hex, type PublicClient } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { toCoinbaseSmartAccount } from "viem/account-abstraction"
@@ -47,6 +50,39 @@ export function getSmartAccountAddress(privateKey: Hex): Promise<Hex> {
  * once deployed it degrades to a plain ERC-1271 signature.
  */
 export async function signNonceForSmartAccount(privateKey: Hex, message: string): Promise<Hex> {
-  const account = await createSmartAccount(privateKey, createBaseSepoliaPublicClient())
-  return account.signMessage({ message })
+  const client = createBaseSepoliaPublicClient()
+  const account = await createSmartAccount(privateKey, client)
+  const signature = await account.signMessage({ message })
+  // TODO(remove): debug logging for backend universal-validator mismatch.
+  // Writes to a file so TUI stderr-swallowing doesn't hide it.
+  try {
+    const owner = privateKeyToAccount(privateKey)
+    const sigMagicSuffix = signature.slice(-64).toLowerCase()
+    const is6492 = sigMagicSuffix === "6492649264926492649264926492649264926492649264926492649264926492"
+    let smartAccountCode = "unknown"
+    try {
+      const code = await client.getCode({ address: account.address })
+      smartAccountCode = code && code !== "0x" ? `deployed (len=${(code.length - 2) / 2})` : "undeployed (0x)"
+    } catch (err) {
+      smartAccountCode = `getCode error: ${err instanceof Error ? err.message : String(err)}`
+    }
+    const payload = {
+      at: new Date().toISOString(),
+      ownerEOA: owner.address,
+      smartAccountAddress: account.address,
+      smartAccountVersion: SMART_ACCOUNT_VERSION,
+      smartAccountCode,
+      chainId: baseSepolia.id,
+      nonce: message,
+      nonceLength: message.length,
+      signatureLength: (signature.length - 2) / 2,
+      is6492Wrapped: is6492,
+      signature,
+    }
+    const logPath = path.join(os.homedir(), ".soma", "signin-debug.log")
+    fs.appendFileSync(logPath, JSON.stringify(payload, null, 2) + "\n")
+  } catch {
+    // never let debug logging break signing
+  }
+  return signature
 }
