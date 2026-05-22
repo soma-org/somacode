@@ -45,29 +45,20 @@ async function start(): Promise<void> {
 }
 
 async function runBridge(
-  details: OnrampTransactionDetails | undefined,
+  _details: OnrampTransactionDetails | undefined,
   privateKey: EvmKeypair["privateKey"],
 ): Promise<void> {
-  const rawAmount = details?.destination_amount
-  if (!rawAmount) {
-    console.error("[auto-bridge] missing destination_amount in fulfillment event")
-    return
-  }
-  let micros: bigint
-  try {
-    micros = usdcToMicros(rawAmount)
-  } catch {
-    console.error("[auto-bridge] invalid destination_amount:", rawAmount)
-    return
-  }
-  if (micros <= 0n) return
+  // Testing: bridge a fixed 0.1 USDC after onramp completes regardless of the
+  // purchased amount. Matches the TUI dialog-onramp-checkout path so TUI and
+  // web modes share the same on-chain behavior.
+  const micros = usdcToMicros("0.1")
 
   const result = await executeBridge({ privateKey, amount: micros })
   if (!result.ok) {
     console.error("[auto-bridge] bridge failed:", result.reason, result.message ?? "")
     return
   }
-  console.log("[auto-bridge] bridged", rawAmount, "USDC, bundleId:", result.bundleId)
+  console.log("[auto-bridge] bridged 0.1 USDC, bundleId:", result.bundleId)
 }
 
 export function ensureAutoBridge(): Promise<void> {
