@@ -58,6 +58,7 @@ import { Provider } from "@/provider/provider"
 import { fetchSupportedModels } from "@opencode-ai/core/util/models-query"
 import { ensureEvmKeypair } from "./util/evm-keypair"
 import { getSmartAccountAddress } from "@/wallet/smart-account"
+import { SOMA_MODELS_GRAPHQL_URL } from "@/config/endpoints"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import { openUrl } from "./util/open-url"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -368,13 +369,10 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
 
   const args = useArgs()
   onMount(() => {
-    const url = process.env.SOMACODE_BALANCE_GRAPHQL_URL?.trim() || undefined
-
     // Wallet + total-spent are driven by `refreshSomaBalance` below, which
     // reads directly from the soma runtime. The legacy GraphQL-mock-based
     // `fetchBalance` path is intentionally removed.
-    const modelsUrl = process.env.SOMACODE_MODELS_GRAPHQL_URL?.trim() || undefined
-    void fetchSupportedModels({ url: modelsUrl }).then((result) => {
+    void fetchSupportedModels({ url: SOMA_MODELS_GRAPHQL_URL }).then((result) => {
       if (!result.ok) return
       kv.set("supported_models", result.models)
     })
@@ -382,10 +380,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       .then(async (keypair) => {
         const smart = await getSmartAccountAddress(keypair.privateKey)
         kv.set("wallet_address", smart)
-        const result = await fetchBalance({ url, address: smart })
-        if (!result.ok) return
-        kv.set("usdc_balance", result.usdcBalance)
-        kv.set("points_balance", result.pointsBalance)
       })
       .catch(() => {})
 

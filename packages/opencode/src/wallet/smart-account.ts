@@ -5,14 +5,14 @@ import { createPublicClient, http, type Hex, type PublicClient } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { toCoinbaseSmartAccount } from "viem/account-abstraction"
 import { baseSepolia } from "viem/chains"
+import { BASE_SEPOLIA_RPC_URL } from "../config/endpoints"
 
-const DEFAULT_BASE_SEPOLIA_RPC = "https://sepolia.base.org"
 // Coinbase Smart Wallet contract version. Pinning this here guarantees the on-ramp
 // recipient address and the bridge user-op sender resolve to the same smart account.
 const SMART_ACCOUNT_VERSION = "1.1" as const
 
 function rpcUrl(override?: string): string {
-  return override?.trim() || process.env.BASE_SEPOLIA_RPC_URL?.trim() || DEFAULT_BASE_SEPOLIA_RPC
+  return override?.trim() || BASE_SEPOLIA_RPC_URL
 }
 
 export function createBaseSepoliaPublicClient(override?: string): PublicClient {

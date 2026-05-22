@@ -1,5 +1,10 @@
-export const DEFAULT_ONRAMP_BASE_URL = "http://95.217.102.55:3010"
-export const DEFAULT_PAYMENT_GATEWAY_URL = "http://localhost:8000"
+import {
+  DEFAULT_ONRAMP_BASE_URL as ONRAMP_BASE_URL_FALLBACK,
+  DEFAULT_PAYMENT_GATEWAY_URL as PAYMENT_GATEWAY_URL_FALLBACK,
+} from "../config/endpoints"
+
+export const DEFAULT_ONRAMP_BASE_URL = ONRAMP_BASE_URL_FALLBACK
+export const DEFAULT_PAYMENT_GATEWAY_URL = PAYMENT_GATEWAY_URL_FALLBACK
 
 export type OnrampStatus =
   | "initialized"

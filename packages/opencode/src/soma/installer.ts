@@ -1,6 +1,7 @@
 import { PINNED_VERSION } from "./config"
+import { SUP_INSTALLER_URL } from "../config/endpoints"
 
-const SUP_INSTALLER = "https://sup.soma.org"
+const SUP_INSTALLER = SUP_INSTALLER_URL
 
 const which = async (cmd: string): Promise<string | undefined> => {
   const proc = Bun.spawn(["which", cmd], { stdout: "pipe", stderr: "ignore" })

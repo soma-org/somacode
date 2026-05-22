@@ -6,6 +6,7 @@ import {
   type BridgeResult,
 } from "@opencode-ai/core/util/bridge"
 import { createBaseSepoliaPublicClient, createSmartAccount } from "./smart-account"
+import { BASE_BUNDLER_URL, BASE_PAYMASTER_URL } from "../config/endpoints"
 
 export type ExecuteBridgeOptions = {
   privateKey: Hex
@@ -19,10 +20,10 @@ export type ExecuteBridgeOptions = {
 export async function executeBridge(options: ExecuteBridgeOptions): Promise<BridgeResult> {
   if (options.amount <= 0n) return { ok: false, reason: "invalid_amount" }
 
-  const paymasterUrl = options.paymasterUrl?.trim() || process.env.BASE_PAYMASTER_URL?.trim()
+  const paymasterUrl = options.paymasterUrl?.trim() || BASE_PAYMASTER_URL
   if (!paymasterUrl) return { ok: false, reason: "missing_paymaster_url" }
 
-  const bundlerUrl = options.bundlerUrl?.trim() || process.env.BASE_BUNDLER_URL?.trim() || paymasterUrl
+  const bundlerUrl = options.bundlerUrl?.trim() || BASE_BUNDLER_URL || paymasterUrl
 
   try {
     const publicClient = createBaseSepoliaPublicClient(options.rpcUrl)

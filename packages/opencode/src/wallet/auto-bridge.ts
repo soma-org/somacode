@@ -8,6 +8,7 @@ import { usdcToMicros } from "@opencode-ai/core/util/bridge"
 import { ensureEvmKeypair, type EvmKeypair } from "./keypair"
 import { getSmartAccountAddress } from "./smart-account"
 import { executeBridge } from "./bridge"
+import { ONRAMP_BASE_URL } from "../config/endpoints"
 
 let subscription: OnrampSubscription | undefined
 let starting: Promise<void> | undefined
@@ -23,11 +24,10 @@ async function start(): Promise<void> {
     return
   }
 
-  const baseUrl = process.env.SOMACODE_ONRAMP_BASE_URL?.trim() || undefined
   const handled = new Set<string>()
 
   subscription = subscribeToOnrampEvents({
-    baseUrl,
+    baseUrl: ONRAMP_BASE_URL,
     onEvent: (event) => {
       if (event.status !== "fulfillment_complete") return
       const details = event.session?.transaction_details

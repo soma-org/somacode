@@ -1,4 +1,6 @@
-export const DEFAULT_MODELS_GRAPHQL_URL = "https://graphql.testnet.soma.org/graphql"
+import { DEFAULT_SOMA_GRAPHQL_URL } from "../config/endpoints"
+
+export const DEFAULT_MODELS_GRAPHQL_URL = DEFAULT_SOMA_GRAPHQL_URL
 
 export type SupportedModel = {
   providerID: string

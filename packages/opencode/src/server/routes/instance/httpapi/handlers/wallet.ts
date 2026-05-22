@@ -2,23 +2,11 @@ import { ensureEvmKeypair } from "@/wallet/keypair"
 import { ensureAutoBridge } from "@/wallet/auto-bridge"
 import { getSmartAccountAddress, signNonceForSmartAccount } from "@/wallet/smart-account"
 import { runOnrampCheckout } from "@opencode-ai/core/util/wallet-checkout"
-import { DEFAULT_PAYMENT_GATEWAY_URL } from "@opencode-ai/core/util/onramp-session"
+import { ONRAMP_BASE_URL, PAYMENT_GATEWAY_URL } from "@/config/endpoints"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
 import { WalletCheckoutInput } from "../groups/wallet"
-
-function readEnvBaseUrl(): string | undefined {
-  return process.env.SOMACODE_ONRAMP_BASE_URL?.trim() || undefined
-}
-
-function readEnvGatewayUrl(): string {
-  return (
-    process.env.VITE_SOMACODE_PAYMENT_GATEWAY_URL?.trim() ||
-    process.env.SOMACODE_PAYMENT_GATEWAY_URL?.trim() ||
-    DEFAULT_PAYMENT_GATEWAY_URL
-  )
-}
 
 export const walletHandlers = HttpApiBuilder.group(RootHttpApi, "wallet", (handlers) =>
   Effect.gen(function* () {
@@ -31,8 +19,8 @@ export const walletHandlers = HttpApiBuilder.group(RootHttpApi, "wallet", (handl
           return await runOnrampCheckout({
             publicKey: keypair.publicKey,
             address: smartAccountAddress,
-            baseUrl: ctx.payload.baseUrl ?? readEnvBaseUrl(),
-            gatewayUrl: ctx.payload.gatewayUrl ?? readEnvGatewayUrl(),
+            baseUrl: ctx.payload.baseUrl ?? ONRAMP_BASE_URL,
+            gatewayUrl: ctx.payload.gatewayUrl ?? PAYMENT_GATEWAY_URL,
             sign: (nonce) => signNonceForSmartAccount(keypair.privateKey, nonce),
           })
         } catch (err) {

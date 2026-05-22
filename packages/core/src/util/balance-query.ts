@@ -1,4 +1,6 @@
-export const DEFAULT_INDEXER_URL = "https://graphql.testnet.soma.org/graphql"
+import { DEFAULT_SOMA_GRAPHQL_URL } from "../config/endpoints"
+
+export const DEFAULT_INDEXER_URL = DEFAULT_SOMA_GRAPHQL_URL
 
 const USDC_DECIMALS = 6n
 const USDC_DENOMINATOR = 10n ** USDC_DECIMALS

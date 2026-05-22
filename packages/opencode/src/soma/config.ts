@@ -1,9 +1,10 @@
 import os from "os"
 import path from "path"
+import { SOMA_INDEXER_GRAPHQL_URL } from "../config/endpoints"
 
 export const PINNED_VERSION = "0.1.30"
 
-export const INDEXER_URL = "https://graphql.testnet.soma.org/graphql"
+export const INDEXER_URL = SOMA_INDEXER_GRAPHQL_URL
 
 const DEFAULT_CONFIG_DIR = path.join(os.homedir(), ".soma", "soma_config")
 const SOMACODE_CONFIG_DIR = path.join(os.homedir(), ".somacode", "soma", "soma_config")

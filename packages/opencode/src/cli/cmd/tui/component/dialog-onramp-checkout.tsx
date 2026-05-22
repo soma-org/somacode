@@ -4,11 +4,11 @@ import {
   isTerminalStatus,
   subscribeToOnrampEvents,
   walletAddressesMatch,
-  DEFAULT_PAYMENT_GATEWAY_URL,
   type OnrampStatus,
   type OnrampSubscription,
   type OnrampTransactionDetails,
 } from "@opencode-ai/core/util/onramp-session"
+import { ONRAMP_BASE_URL, PAYMENT_GATEWAY_URL } from "@/config/endpoints"
 import { runOnrampCheckout, type OnrampCheckoutFailureReason } from "@opencode-ai/core/util/wallet-checkout"
 import { usdcToMicros, type BridgeFailureReason } from "@opencode-ai/core/util/bridge"
 import { executeBridge } from "@/wallet/bridge"
@@ -203,8 +203,8 @@ export function DialogOnrampCheckout() {
   const { theme } = useTheme()
   const kv = useKV()
 
-  const baseUrl = process.env.SOMACODE_ONRAMP_BASE_URL?.trim() || undefined
-  const gatewayUrl = process.env.VITE_SOMACODE_PAYMENT_GATEWAY_URL?.trim() || DEFAULT_PAYMENT_GATEWAY_URL
+  const baseUrl = ONRAMP_BASE_URL
+  const gatewayUrl = PAYMENT_GATEWAY_URL
 
   const [phase, setPhase] = createSignal<Phase>({ kind: "loading_keypair" })
   const [redirectUrl, setRedirectUrl] = createSignal<string | undefined>(undefined)
