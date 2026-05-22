@@ -1733,7 +1733,7 @@ export function Prompt(props: PromptProps) {
               )}
             </Match>
             <Match when={true}>
-              <box flexDirection="column" gap={2} alignItems="left" flexShrink={0}>
+              <box flexDirection="column" gap={2} alignItems="flex-start" flexShrink={0}>
                 <Show when={props.pointsBalance !== undefined}>
                   <box flexDirection="row" flexShrink={0} gap={2} alignItems="center">
                     <text fg={theme.textMuted}>Balance: ${(props.usdcBalance ?? 0).toFixed(2)}</text>

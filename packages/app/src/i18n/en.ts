@@ -692,6 +692,12 @@ export const dict = {
     "Expected JSON with a non-empty \"redirect_url\" string.",
   "sidebar.points.dialogBody":
     "Your points and USDC balance are stored on this device until you connect a billing account. You can buy USDC securely through Stripe, which will open a checkout page in your browser.",
+  "sidebar.points.sectionUsdcSpent": "USDC spent",
+  "sidebar.points.sectionWalletBalance": "Wallet balance",
+  "sidebar.points.fundWallet": "Fund wallet",
+  "sidebar.points.walletAddress": "Wallet address",
+  "sidebar.points.lowFundsWarning":
+    "Your wallet balance is low. Fund your wallet to continue using paid models.",
 
   "onramp.dialog.title": "Buy USDC",
   "onramp.wallet.label": "Wallet address",
