@@ -1,4 +1,4 @@
-import { DEFAULT_SOMA_GRAPHQL_URL } from "../config/endpoints"
+import { DEFAULT_SOMA_GRAPHQL_URL } from "../config/endpoints.ts"
 
 export const DEFAULT_INDEXER_URL = DEFAULT_SOMA_GRAPHQL_URL
 

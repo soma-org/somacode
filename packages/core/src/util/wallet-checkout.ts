@@ -4,7 +4,7 @@ import {
   generateOneTimeCode,
   type AuthFailureReason,
   type BuildGatewayUrlFailureReason,
-} from "./onramp-session"
+} from "./onramp-session.ts"
 
 export type OnrampCheckoutFailureReason = AuthFailureReason | BuildGatewayUrlFailureReason
 
