@@ -7,7 +7,7 @@ export const BASE_SEPOLIA_USDC: Hex = "0x036CbD53842c5426634e7929541eC2318f3dCF7
 export const SOMA_DESTINATION_CHAIN_ID = 2
 
 // Soma recipient is a 32-byte address. Hardcoded until per-user derivation lands.
-export const SOMA_RECIPIENT: Hex = "0x97861d9b81cbc56957f8ec61286a45d088c10e287076c6b966698b90ba259dd3"
+export const SOMA_RECIPIENT: Hex = "0xcf0ba8ae309d3f4160ece7729c681defcab8854fdb4cb1c3e3ff7e0859b387c8"
 
 export const USDC_DECIMALS = 6
 

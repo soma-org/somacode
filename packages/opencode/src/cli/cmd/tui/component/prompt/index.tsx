@@ -1733,17 +1733,17 @@ export function Prompt(props: PromptProps) {
               )}
             </Match>
             <Match when={true}>
-              <box flexDirection="row" gap={2} alignItems="center" flexShrink={0}>
+              <box flexDirection="column" gap={2} alignItems="left" flexShrink={0}>
                 <Show when={props.pointsBalance !== undefined}>
                   <box flexDirection="row" flexShrink={0} gap={2} alignItems="center">
                     <text fg={theme.textMuted}>Balance: ${(props.usdcBalance ?? 0).toFixed(2)}</text>
                     <text fg={theme.textMuted}>Spent: ${(props.pointsBalance ?? 0).toFixed(4)}</text>
                   </box>
-                  <Show when={props.pointsBalance === 0 && (props.usdcBalance ?? 0) === 0}>
-                    <text fg={theme.textMuted}>
-                      Run <span style={{ fg: theme.accent }}>/buy-usdc</span> to deposit USDC
-                    </text>
-                  </Show>
+                </Show>
+                <Show when={props.pointsBalance === 0 && (props.usdcBalance ?? 0) === 0}>
+                  <text fg={theme.textMuted}>
+                    Run <span style={{ fg: theme.accent }}>/buy-usdc</span> to deposit USDC
+                  </text>
                 </Show>
                 {props.hint ?? <text />}
               </box>
