@@ -18,7 +18,7 @@ type ModelInfo = {
     input: Array<string>
   }
   reasoning?: boolean
-  limit: {
+  limit?: {
     context: number
   }
 }
@@ -72,7 +72,11 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
       ? language.t("model.tooltip.reasoning.allowed")
       : language.t("model.tooltip.reasoning.none")
   }
-  const context = () => language.t("model.tooltip.context", { limit: props.model.limit.context.toLocaleString() })
+  const context = () => {
+    const limit = props.model.limit?.context
+    if (limit === undefined) return undefined
+    return language.t("model.tooltip.context", { limit: limit.toLocaleString() })
+  }
 
   return (
     <div class="flex flex-col gap-1 py-1">
@@ -85,7 +89,9 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
         )}
       </Show>
       <div class="text-12-regular text-text-invert-base">{reasoning()}</div>
-      <div class="text-12-regular text-text-invert-base">{context()}</div>
+      <Show when={context()}>
+        {(value) => <div class="text-12-regular text-text-invert-base">{value()}</div>}
+      </Show>
     </div>
   )
 }

@@ -91,7 +91,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const validModel = (model: ModelKey) => {
       const provider = providers.all().find((item) => item.id === model.providerID)
-      return !!provider?.models[model.modelID] && connected().has(model.providerID)
+      if (provider?.models[model.modelID] && connected().has(model.providerID)) return true
+      // GraphQL-sourced models (e.g. soma) aren't registered against an SDK
+      // provider, but models.find() resolves them via the same supportedList
+      // that feeds the picker. Accept whatever the user can see.
+      return !!models.find(model)
     }
 
     const firstModel = (...items: Array<() => ModelKey | undefined>) => {
