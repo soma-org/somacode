@@ -1,4 +1,3 @@
-import { PINNED_VERSION } from "./config"
 import { SUP_INSTALLER_URL } from "../config/endpoints"
 
 const SUP_INSTALLER = SUP_INSTALLER_URL
@@ -22,25 +21,22 @@ const installSup = async () => {
   await run(["sh", tmp])
 }
 
-const installedVersion = async (binary: string) => {
-  const proc = Bun.spawn([binary, "--version"], { stdout: "pipe", stderr: "pipe" })
-  if ((await proc.exited) !== 0) return undefined
-  return (await new Response(proc.stdout).text()).trim()
-}
-
+// Always install whatever sup considers latest. We used to gate on a
+// PINNED_VERSION constant so somacode and the on-chain protocol moved
+// together, but the chain enforces protocol-version semantics itself
+// (advance_epoch refuses upgrades that aren't quorum-supported) so a
+// somacode running an older binary just transparently uses an older
+// in-proxy filter set. When we want strict lockstep again, reintroduce
+// PINNED_VERSION and pass `soma@${PINNED_VERSION}` to `sup install`.
 export const ensureSoma = async (): Promise<string> => {
   const existing = await which("soma")
-  if (existing) {
-    const ver = await installedVersion(existing)
-    if (ver?.includes(PINNED_VERSION)) return existing
-    if (ver) return existing
-  }
+  if (existing) return existing
   const sup = (await which("sup")) ?? (await (async () => {
     await installSup()
     return which("sup")
   })())
   if (!sup) throw new Error("sup binary not found after installer ran")
-  await run([sup, "install", `soma@${PINNED_VERSION}`])
+  await run([sup, "install", "soma"])
   const after = await which("soma")
   if (!after) throw new Error("soma binary not found after sup install")
   return after
