@@ -171,10 +171,33 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
 const somaStatusRoute = HttpRouter.use((router) =>
   router.add("GET", "/soma/status", () =>
     Effect.gen(function* () {
+      // Prefer the in-process soma runtime: it holds the active wallet address
+      // and on-chain balance derived from the running proxy. Fall back to the
+      // SOMA_STATUS_URL upstream and SOMA_WALLET_ADDRESS env when the runtime
+      // hasn't started (e.g. CLI scripts that don't spawn the proxy).
+      const runtime = yield* Effect.tryPromise({
+        try: async () => {
+          const m = await import("@/soma/runtime")
+          const [address, walletUsdcMicros, usdcSpentMicros] = await Promise.all([
+            m.walletAddress(),
+            m.walletUsdcMicros().catch(() => 0n),
+            m.usdcSpentMicros().catch(() => 0n),
+          ])
+          return {
+            address,
+            walletUsdcMicros: walletUsdcMicros.toString(),
+            usdcSpentMicros: usdcSpentMicros.toString(),
+            ready: true,
+          }
+        },
+        catch: () => undefined,
+      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (runtime) return HttpServerResponse.jsonUnsafe(runtime)
+
       const url = process.env.SOMA_STATUS_URL
       if (!url) {
         return HttpServerResponse.jsonUnsafe({
-          address: "",
+          address: process.env.SOMA_WALLET_ADDRESS ?? "",
           walletUsdcMicros: "0",
           usdcSpentMicros: "0",
           liveProviders: 0,

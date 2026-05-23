@@ -9,6 +9,8 @@ import { ensureEvmKeypair, type EvmKeypair } from "./keypair"
 import { getSmartAccountAddress } from "./smart-account"
 import { executeBridge } from "./bridge"
 import { ONRAMP_BASE_URL } from "../config/endpoints"
+import * as SomaRuntime from "@/soma/runtime"
+import type { Hex } from "viem"
 
 let subscription: OnrampSubscription | undefined
 let starting: Promise<void> | undefined
@@ -44,6 +46,16 @@ async function start(): Promise<void> {
   })
 }
 
+async function resolveSomaRecipient(): Promise<Hex | undefined> {
+  try {
+    const address = await SomaRuntime.walletAddress()
+    return address as Hex
+  } catch (err) {
+    console.error("[auto-bridge] failed to resolve soma recipient:", err)
+    return undefined
+  }
+}
+
 async function runBridge(
   _details: OnrampTransactionDetails | undefined,
   privateKey: EvmKeypair["privateKey"],
@@ -52,13 +64,14 @@ async function runBridge(
   // purchased amount. Matches the TUI dialog-onramp-checkout path so TUI and
   // web modes share the same on-chain behavior.
   const micros = usdcToMicros("0.1")
+  const somaRecipient = await resolveSomaRecipient()
 
-  const result = await executeBridge({ privateKey, amount: micros })
+  const result = await executeBridge({ privateKey, amount: micros, somaRecipient })
   if (!result.ok) {
     console.error("[auto-bridge] bridge failed:", result.reason, result.message ?? "")
     return
   }
-  console.log("[auto-bridge] bridged 0.1 USDC, bundleId:", result.bundleId)
+  console.log("[auto-bridge] bridged 0.1 USDC to", somaRecipient ?? "default recipient", "bundleId:", result.bundleId)
 }
 
 export function ensureAutoBridge(): Promise<void> {

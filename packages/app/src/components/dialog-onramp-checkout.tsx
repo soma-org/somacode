@@ -283,7 +283,10 @@ export const DialogOnrampCheckout: Component = () => {
       setPhase({ kind: "error", reason: result.reason, message: result.message })
       return
     }
-    points.setWalletAddress(result.walletAddress)
+    // setActiveWallet tracks the Base smart account locally so onramp events
+    // can be matched. points.walletAddress is the user-facing primary wallet
+    // and stays pinned to the soma address (written by useBalance from
+    // /soma/status), so we deliberately don't overwrite it here.
     setActiveWallet(result.walletAddress)
     setRedirectUrl(result.redirectUrl)
     setPhase({ kind: "waiting", status: "initialized", oneTimeCode: result.oneTimeCode })

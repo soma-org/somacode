@@ -12,6 +12,8 @@ import { ONRAMP_BASE_URL, PAYMENT_GATEWAY_URL } from "@/config/endpoints"
 import { runOnrampCheckout, type OnrampCheckoutFailureReason } from "@opencode-ai/core/util/wallet-checkout"
 import { usdcToMicros, type BridgeFailureReason } from "@opencode-ai/core/util/bridge"
 import { executeBridge } from "@/wallet/bridge"
+import * as SomaRuntime from "@/soma/runtime"
+import type { Hex } from "viem"
 import { useTheme } from "../context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { useKV } from "@tui/context/kv"
@@ -229,7 +231,15 @@ export function DialogOnrampCheckout() {
     // Testing: bridge a fixed 0.1 USDC after onramp completes regardless of the purchased amount.
     const micros = usdcToMicros("0.1")
 
-    const result = await executeBridge({ privateKey: keypair.privateKey, amount: micros })
+    let somaRecipient: Hex | undefined
+    try {
+      const address = await SomaRuntime.walletAddress()
+      somaRecipient = address as Hex
+    } catch {
+      // soma runtime not ready; executeBridge falls back to the hardcoded recipient.
+    }
+
+    const result = await executeBridge({ privateKey: keypair.privateKey, amount: micros, somaRecipient })
     if (!alive.value) return
 
     if (!result.ok) {

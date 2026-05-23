@@ -15,10 +15,33 @@ const run = async (binary: string, args: string[]) => {
 
 const normalize = (addr: string) => (addr.startsWith("0x") ? addr : `0x${addr}`)
 
+// soma wallet output comes in one of two shapes depending on the binary version:
+//   --json:          "<hex>"  or  { "address": "<hex>" }
+//   plain text:      "<wallet-name> (<hex>)"
+// Returns the trimmed hex (without 0x prefix). Throws if neither shape matches.
+const parseActive = (raw: string): string => {
+  const out = raw.trim()
+  if (!out) throw new Error("soma wallet active returned empty output")
+  if (out.startsWith("{") || out.startsWith("\"")) {
+    const parsed = JSON.parse(out) as string | { address: string }
+    return typeof parsed === "string" ? parsed : parsed.address
+  }
+  // "name (hex)" — capture the hex inside the last set of parentheses.
+  const match = out.match(/\(([0-9a-fA-F]{40,})\)/)
+  if (match?.[1]) return match[1]
+  throw new Error(`soma wallet active returned unrecognized output: ${out}`)
+}
+
 export const activeAddress = async (binary: string) => {
-  const out = (await run(binary, ["wallet", "--json", "active"])).trim()
-  const parsed = JSON.parse(out) as string | { address: string }
-  return normalize(typeof parsed === "string" ? parsed : parsed.address)
+  // Try --json first; some soma versions don't support the flag and fall back
+  // to the plain-text format which we also parse.
+  let raw: string
+  try {
+    raw = await run(binary, ["wallet", "--json", "active"])
+  } catch {
+    raw = await run(binary, ["wallet", "active"])
+  }
+  return normalize(parseActive(raw))
 }
 
 export const usdcBalanceMicros = async (binary: string, address: string): Promise<bigint> => {
