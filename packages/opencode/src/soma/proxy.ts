@@ -21,14 +21,20 @@ const ensurePortFree = async () => {
   // (the previous process attached its stderr to the same controlling terminal,
   // so its warn-level chatter splatters onto the current TUI). If we find one,
   // kill it and retry — there's nothing else legitimate listening on this port.
+  //
+  // lsof / ps are POSIX-only — on Windows we can't introspect the holder this
+  // way. Fall straight through to the error path so the user gets a clear
+  // "port in use" message instead of a confusing exception from `Bun.spawn`.
   let stale: string[] = []
-  try {
-    const lsof = Bun.spawn(["lsof", "-ti", `tcp:${PROXY_PORT}`], { stdout: "pipe", stderr: "ignore" })
-    const text = await new Response(lsof.stdout).text()
-    await lsof.exited
-    stale = text.split("\n").map((s) => s.trim()).filter(Boolean)
-  } catch {
-    // lsof not available — fall through to error below
+  if (process.platform !== "win32") {
+    try {
+      const lsof = Bun.spawn(["lsof", "-ti", `tcp:${PROXY_PORT}`], { stdout: "pipe", stderr: "ignore" })
+      const text = await new Response(lsof.stdout).text()
+      await lsof.exited
+      stale = text.split("\n").map((s) => s.trim()).filter(Boolean)
+    } catch {
+      // lsof not available — fall through to error below
+    }
   }
 
   for (const pid of stale) {
@@ -126,7 +132,7 @@ const spawn = async (
   // recent run at the tail of the file. Pass the same fd for stdout + stderr.
   const logFd = openSync(logPath, "a")
   const proc = Bun.spawn([binary, ...args], {
-    env: { ...process.env, RUST_LOG: process.env.RUST_LOG ?? "inference=warn,sdk=warn" },
+    env: { ...process.env, RUST_LOG: process.env.RUST_LOG ?? "inference=info,sdk=info" },
     stdout: logFd,
     stderr: logFd,
   })

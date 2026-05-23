@@ -153,7 +153,13 @@ const reputationFor = async (address: string): Promise<Reputation | undefined> =
   }
 }
 
-const LIVENESS_TIMEOUT_MS = 3_000
+// 8s is generous enough for trans-pacific VPN paths (the typical pathological
+// case: a developer in CN routing through a VPN to a us-central provider). A
+// tighter bound made the filter false-positive on a single slow probe and the
+// caller would briefly publish an empty trusted-set — locking out all
+// routing for ~60s until the next probe recovered. The throughput cost of
+// the looser bound is bounded by `PROBE_CONCURRENCY` in `trusted-server.ts`.
+const LIVENESS_TIMEOUT_MS = Number(process.env.SOMACODE_LIVENESS_TIMEOUT_MS) || 8_000
 
 export const probeLive = async (endpoint: string): Promise<boolean> => {
   const controller = new AbortController()
