@@ -2,6 +2,8 @@ import { onCleanup, onMount } from "solid-js"
 import { usePoints } from "@/context/points"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
+import { useServer } from "@/context/server"
+import { authTokenFromCredentials } from "@/utils/server"
 
 const POLL_INTERVAL_MS = 15_000
 
@@ -21,16 +23,25 @@ export function useBalance() {
   const points = usePoints()
   const sdk = useGlobalSDK()
   const platform = usePlatform()
+  const server = useServer()
 
   // /soma/status is served by the opencode server (port 4096 in dev), not the
   // Vite dev server (port 3000), so a bare fetch("/soma/status") would 404.
-  // Use the global SDK's resolved server URL plus platform.fetch (which carries
-  // the auth token) so the route resolves in both web dev mode and packaged web.
+  // Use the global SDK's resolved server URL plus the same Basic-auth header
+  // the SDK client carries (the route lives behind authOnlyRouterLayer).
   // Must use useGlobalSDK rather than useSDK here — BalanceLoader is mounted
   // above the per-directory SDKProvider in app.tsx.
   const fetchStatus = async () => {
     const base = sdk.url.replace(/\/+$/, "")
-    const res = await (platform.fetch ?? fetch)(`${base}/soma/status`).catch(() => undefined)
+    const current = server.current
+    const headers: Record<string, string> = {}
+    if (current?.http.password) {
+      headers.Authorization = `Basic ${authTokenFromCredentials({
+        username: current.http.username,
+        password: current.http.password,
+      })}`
+    }
+    const res = await (platform.fetch ?? fetch)(`${base}/soma/status`, { headers }).catch(() => undefined)
     if (!res?.ok) return
     return (await res.json()) as {
       address?: string

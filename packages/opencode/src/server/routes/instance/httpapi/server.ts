@@ -190,7 +190,10 @@ const somaStatusRoute = HttpRouter.use((router) =>
             ready: true,
           }
         },
-        catch: () => undefined,
+        catch: (err) => {
+          console.error("[/soma/status] SomaRuntime unavailable, falling back:", err)
+          return undefined
+        },
       }).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (runtime) return HttpServerResponse.jsonUnsafe(runtime)
 

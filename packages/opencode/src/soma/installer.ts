@@ -3,10 +3,10 @@ import { SUP_INSTALLER_URL } from "../config/endpoints"
 
 const SUP_INSTALLER = SUP_INSTALLER_URL
 
+// Cross-platform PATH lookup. Bun.which handles Windows PATHEXT (.exe/.cmd/.bat)
+// and POSIX semantics; the previous spawn of `which` only existed on POSIX.
 const which = async (cmd: string): Promise<string | undefined> => {
-  const proc = Bun.spawn(["which", cmd], { stdout: "pipe", stderr: "ignore" })
-  if ((await proc.exited) !== 0) return undefined
-  return (await new Response(proc.stdout).text()).trim() || undefined
+  return Bun.which(cmd) ?? undefined
 }
 
 const run = async (cmd: string[]) => {
