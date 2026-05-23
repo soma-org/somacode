@@ -10,6 +10,8 @@ import { iife } from "@/util/iife"
 import { useToast } from "../ui/toast"
 import { useArgs } from "./args"
 import { useSDK } from "./sdk"
+import { useKV } from "./kv"
+import type { SupportedModel } from "@opencode-ai/core/util/models-query"
 import { RGBA } from "@opentui/core"
 import { Filesystem } from "@/util/filesystem"
 
@@ -27,10 +29,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const sync = useSync()
     const sdk = useSDK()
     const toast = useToast()
+    const kv = useKV()
 
     function isModelValid(model: { providerID: string; modelID: string }) {
       const provider = sync.data.provider.find((x) => x.id === model.providerID)
-      return !!provider?.models[model.modelID]
+      if (provider?.models[model.modelID]) return true
+      // soma models come from a GraphQL/runtime fetch into kv.supported_models
+      // instead of the SDK provider sync, so fall back to that list.
+      const supported = kv.get("supported_models") as SupportedModel[] | undefined
+      if (!Array.isArray(supported)) return false
+      return supported.some(
+        (m) => m && m.providerID === model.providerID && m.modelID === model.modelID,
+      )
     }
 
     function getFirstValidModel(...modelFns: (() => { providerID: string; modelID: string } | undefined)[]) {
