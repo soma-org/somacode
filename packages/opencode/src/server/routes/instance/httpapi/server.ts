@@ -171,10 +171,13 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
 const somaStatusRoute = HttpRouter.use((router) =>
   router.add("GET", "/soma/status", () =>
     Effect.gen(function* () {
-      // Prefer the in-process soma runtime: it holds the active wallet address
-      // and on-chain balance derived from the running proxy. Fall back to the
-      // SOMA_STATUS_URL upstream and SOMA_WALLET_ADDRESS env when the runtime
-      // hasn't started (e.g. CLI scripts that don't spawn the proxy).
+      // Query the in-process soma runtime directly. The earlier
+      // SOMA_STATUS_URL upstream fallback was served by the deleted
+      // TS trusted-server; with liveness moved to the Rust proxy
+      // there's no out-of-process server to fall back to. When the
+      // runtime hasn't been initialized (e.g. CLI scripts that don't
+      // spawn the proxy), we return ready:false with the cached
+      // wallet address from env if any.
       const runtime = yield* Effect.tryPromise({
         try: async () => {
           const m = await import("@/soma/runtime")
@@ -191,37 +194,18 @@ const somaStatusRoute = HttpRouter.use((router) =>
           }
         },
         catch: (err) => {
-          console.error("[/soma/status] SomaRuntime unavailable, falling back:", err)
+          console.error("[/soma/status] SomaRuntime unavailable:", err)
           return undefined
         },
       }).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (runtime) return HttpServerResponse.jsonUnsafe(runtime)
 
-      const url = process.env.SOMA_STATUS_URL
-      if (!url) {
-        return HttpServerResponse.jsonUnsafe({
-          address: process.env.SOMA_WALLET_ADDRESS ?? "",
-          walletUsdcMicros: "0",
-          usdcSpentMicros: "0",
-          liveProviders: 0,
-          ready: false,
-        })
-      }
-      const upstream = yield* Effect.tryPromise({
-        try: () => fetch(url).then((r) => r.text()),
-        catch: () => undefined,
-      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
-      if (!upstream) {
-        return HttpServerResponse.jsonUnsafe({
-          address: process.env.SOMA_WALLET_ADDRESS ?? "",
-          walletUsdcMicros: "0",
-          usdcSpentMicros: "0",
-          liveProviders: 0,
-          ready: false,
-        })
-      }
-      const parsed = JSON.parse(upstream) as Record<string, unknown>
-      return HttpServerResponse.jsonUnsafe({ ...parsed, ready: true })
+      return HttpServerResponse.jsonUnsafe({
+        address: process.env.SOMA_WALLET_ADDRESS ?? "",
+        walletUsdcMicros: "0",
+        usdcSpentMicros: "0",
+        ready: false,
+      })
     }),
   ),
 ).pipe(Layer.provide(authOnlyRouterLayer))

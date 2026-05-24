@@ -17,7 +17,7 @@ const MODELS = [
 const run = async () => {
   console.log("== booting soma runtime ==")
   const b = await SomaRuntime.init()
-  console.log(`address=${b.address} baseURL=${b.baseURL} status=${b.statusUrl}`)
+  console.log(`address=${b.address} baseURL=${b.baseURL}`)
   // Give the trusted-server one extra refresh cycle so the filter is warm.
   await Bun.sleep(2000)
   let pass = 0

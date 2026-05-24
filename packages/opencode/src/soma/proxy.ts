@@ -4,9 +4,35 @@ import { openSync, closeSync } from "node:fs"
 import os from "node:os"
 import path from "path"
 import { INDEXER_URL, resolveConfigDir, resolveHome } from "./config"
-import { startTrustedServer, type StatusProvider } from "./trusted-server"
 
 export const PROXY_PORT = 11434
+
+/** How long to wait for an already-listening process to answer `/v1/models`. */
+const ADOPT_PROBE_TIMEOUT_MS = 1_500
+
+/**
+ * If something is already listening on `PROXY_PORT` and it answers
+ * `GET /v1/models`, return `true` — we can adopt it as our proxy and
+ * skip spawning a duplicate. Returns `false` for "port is free" OR
+ * "port is taken but the holder doesn't look like soma proxy."
+ *
+ * Cross-platform: only uses HTTP, no `lsof` / `netstat` shell-outs.
+ * The narrower POSIX path below (kill orphans) is still there as
+ * defense in depth for the case where the prior soma proxy is hung
+ * mid-boot and not yet serving `/v1/models`.
+ */
+const adoptIfResponsive = async (): Promise<boolean> => {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), ADOPT_PROBE_TIMEOUT_MS)
+  try {
+    const r = await fetch(`http://127.0.0.1:${PROXY_PORT}/v1/models`, { signal: ctl.signal })
+    return r.ok || r.status === 401 || r.status === 403
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 const ensurePortFree = async () => {
   try {
@@ -14,17 +40,13 @@ const ensurePortFree = async () => {
     server.stop()
     return
   } catch {
-    // fall through to soma-proxy detection
+    // fall through to orphan detection
   }
 
-  // Port is taken — see if it's an orphan `soma proxy` from a prior TUI session
-  // (the previous process attached its stderr to the same controlling terminal,
-  // so its warn-level chatter splatters onto the current TUI). If we find one,
-  // kill it and retry — there's nothing else legitimate listening on this port.
-  //
-  // lsof / ps are POSIX-only — on Windows we can't introspect the holder this
-  // way. Fall straight through to the error path so the user gets a clear
-  // "port in use" message instead of a confusing exception from `Bun.spawn`.
+  // Port is taken — see if it's an orphan `soma proxy` from a prior TUI session.
+  // lsof / ps are POSIX-only; on Windows we skip the kill path and rely on the
+  // earlier `adoptIfResponsive` fast path to reuse a healthy proxy, or surface
+  // a clear "port in use" message below if it's something else.
   let stale: string[] = []
   if (process.platform !== "win32") {
     try {
@@ -81,27 +103,44 @@ interface Handle {
   port: number
   payer: string
   binary: string
-  trustedUrl: string
-  statusUrl: string
-  livenessAt: () => Map<string, boolean>
+  /** `true` when the proxy was started by an external process and we adopted it; `stop()` is a no-op. */
+  adopted: boolean
   stop: () => Promise<void>
-  proc: Subprocess
+  proc?: Subprocess
 }
 
 let current: Handle | undefined
 let starting: Promise<Handle> | undefined
 
-const spawn = async (
-  binary: string,
-  payer: string,
-  status?: StatusProvider,
-  prewarmModel?: string,
-): Promise<Handle> => {
+const adoptHandle = (binary: string, payer: string): Handle => ({
+  baseURL: `http://127.0.0.1:${PROXY_PORT}/v1`,
+  port: PROXY_PORT,
+  payer,
+  binary,
+  adopted: true,
+  stop: async () => {
+    if (current?.adopted) current = undefined
+  },
+})
+
+const spawn = async (binary: string, payer: string, prewarmModel?: string): Promise<Handle> => {
+  // Fast path: someone (another somacode entry point, an orphan from a prior
+  // session, a hand-started `soma proxy`) is already serving on PROXY_PORT
+  // and answers /v1/models. Adopt it instead of spawning a duplicate that
+  // would race on the bind. Cross-platform, no shell-outs.
+  if (await adoptIfResponsive()) {
+    return adoptHandle(binary, payer)
+  }
+
   await ensurePortFree()
   const port = PROXY_PORT
   const home = await resolveHome()
   const configDir = await resolveConfigDir()
-  const trusted = await startTrustedServer(status)
+
+  // Liveness filtering happens inside the Rust proxy now (testnet-v0.1.34+);
+  // no more --trusted-providers-url sidecar. The proxy probes each
+  // provider's /health directly with --liveness-refresh-secs / -timeout-ms
+  // defaults baked in.
   const args = [
     "proxy",
     "--listen",
@@ -114,17 +153,12 @@ const spawn = async (
     path.join(configDir, "client.yaml"),
     "--address",
     payer,
-    "--trusted-providers-url",
-    trusted.url,
-    "--trusted-providers-refresh-secs",
-    "60",
   ]
   if (prewarmModel) args.push("--prewarm-model", prewarmModel)
 
   // Send proxy logs to ~/.somacode/soma/proxy.log instead of inheriting the
-  // TUI's stdout/stderr — the proxy's WARN-level chatter (trusted-providers
-  // refresh blips, transient channel hiccups) is harmless and should not
-  // splatter onto the model picker UI.
+  // TUI's stdout/stderr — the proxy's INFO-level chatter shouldn't splatter
+  // onto the model picker UI.
   const logDir = path.join(os.homedir(), ".somacode", "soma")
   await fs.mkdir(logDir, { recursive: true }).catch(() => undefined)
   const logPath = path.join(logDir, "proxy.log")
@@ -141,12 +175,9 @@ const spawn = async (
     port,
     payer,
     binary,
-    trustedUrl: trusted.url,
-    statusUrl: `${trusted.url}/status`,
-    livenessAt: trusted.live,
+    adopted: false,
     proc,
     stop: async () => {
-      trusted.stop()
       proc.kill()
       await proc.exited
       try {
@@ -158,7 +189,6 @@ const spawn = async (
     },
   }
   await waitReady(port).catch(async (err) => {
-    trusted.stop()
     proc.kill()
     try {
       closeSync(logFd)
@@ -167,20 +197,14 @@ const spawn = async (
     }
     throw err
   })
-  await Promise.race([trusted.firstPoll(), Bun.sleep(10_000)])
   return handle
 }
 
-export const ensureProxy = async (
-  binary: string,
-  payer: string,
-  status?: StatusProvider,
-  prewarmModel?: string,
-) => {
+export const ensureProxy = async (binary: string, payer: string, prewarmModel?: string) => {
   if (current && current.payer === payer && current.binary === binary) return current
   if (starting) return starting
   if (current) await current.stop()
-  starting = spawn(binary, payer, status, prewarmModel)
+  starting = spawn(binary, payer, prewarmModel)
   try {
     current = await starting
     return current

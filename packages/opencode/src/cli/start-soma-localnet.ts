@@ -10,11 +10,9 @@ export function startSomaInferenceProxy(): void {
     .then((bootstrap) => {
       process.env.SOMA_PROXY_BASE_URL = bootstrap.baseURL
       process.env.SOMA_WALLET_ADDRESS = bootstrap.address
-      process.env.SOMA_STATUS_URL = bootstrap.statusUrl
       Log.Default.info("soma-runtime", {
         baseURL: bootstrap.baseURL,
         address: bootstrap.address,
-        statusUrl: bootstrap.statusUrl,
       })
     })
     .catch((err: unknown) => {

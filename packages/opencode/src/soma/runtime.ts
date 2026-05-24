@@ -8,7 +8,6 @@ export interface Bootstrap {
   address: string
   baseURL: string
   binary: string
-  statusUrl: string
 }
 
 let bootstrap: Promise<Bootstrap> | undefined
@@ -22,12 +21,11 @@ const start = async (): Promise<Bootstrap> => {
   const binary = await ensureSoma()
   await ensureWallet(binary)
   const address = await activeAddress(binary)
-  const status = {
-    address: () => address,
-    walletUsdcMicros: () => usdcBalanceMicros(binary, address),
-    totalSettledMicros: () => totalSettledMicros(address),
-  }
-  const handle = await ensureProxy(binary, address, status)
+  // No `status` object passed any more — the TS trusted-server (which
+  // exposed /status) is gone. UI status queries hit the in-process
+  // runtime functions (walletUsdcMicros / usdcSpentMicros below)
+  // directly, through `/soma/status` in the HTTP API layer.
+  const handle = await ensureProxy(binary, address)
   pollers.push(
     setInterval(() => {
       void sweepAndTopUp(binary, address).catch(() => undefined)
@@ -36,7 +34,7 @@ const start = async (): Promise<Bootstrap> => {
       modelsCache = undefined
     }, MODELS_TTL_MS),
   )
-  return { address, baseURL: handle.baseURL, binary, statusUrl: handle.statusUrl }
+  return { address, baseURL: handle.baseURL, binary }
 }
 
 export const init = () => {
