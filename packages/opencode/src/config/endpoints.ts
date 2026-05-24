@@ -22,16 +22,21 @@ export const SOMA_MODELS_GRAPHQL_URL = env("SOMACODE_MODELS_GRAPHQL_URL") ?? DEF
 // Base Sepolia RPC. Used for nonce/gas reads when building bridge user ops.
 export const BASE_SEPOLIA_RPC_URL = env("BASE_SEPOLIA_RPC_URL") ?? DEFAULT_BASE_SEPOLIA_RPC_URL
 
-// Coinbase Developer Platform paymaster URL (sponsors bridge gas). No default —
-// the bridge fails fast with "missing_paymaster_url" when this is unset.
-export const BASE_PAYMASTER_URL = env("BASE_PAYMASTER_URL")
-
-// Bundler endpoint. CDP serves bundler + paymaster from the same URL, so
-// default to BASE_PAYMASTER_URL.
-export const BASE_BUNDLER_URL = env("BASE_BUNDLER_URL") ?? BASE_PAYMASTER_URL
-
 // Onramp event stream backend (SSE) that the TUI subscribes to.
 export const ONRAMP_BASE_URL = env("SOMACODE_ONRAMP_BASE_URL") ?? DEFAULT_ONRAMP_BASE_URL
+
+// Backend paymaster proxy. The somacode backend forwards JSON-RPC paymaster
+// requests to CDP after JWT auth, so somacode never needs a direct CDP URL.
+// See `runOnrampCheckout` → /api/auth/register → intent_token (used as bearer).
+export const BACKEND_PAYMASTER_URL = `${ONRAMP_BASE_URL}/api/paymaster`
+
+// Paymaster endpoint used by the bridge. Defaults to the backend proxy above;
+// override with a direct CDP URL when debugging without involving the backend.
+export const BASE_PAYMASTER_URL = env("BASE_PAYMASTER_URL") ?? BACKEND_PAYMASTER_URL
+
+// Bundler endpoint. CDP serves bundler + paymaster from the same URL, so
+// default to BASE_PAYMASTER_URL. Override only if your bundler is split.
+export const BASE_BUNDLER_URL = env("BASE_BUNDLER_URL") ?? BASE_PAYMASTER_URL
 
 // Payment gateway URL hit by the buy-usdc dialog. VITE_-prefixed name is kept
 // because the same value is consumed by the web app via import.meta.env;

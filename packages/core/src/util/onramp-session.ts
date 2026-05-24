@@ -73,7 +73,7 @@ export function buildPaymentGatewayUrl(options: BuildGatewayUrlOptions): BuildGa
 export type AuthFailureReason = "nonce_failed" | "register_failed"
 
 export type AuthResult =
-  | { ok: true; intent_id: string }
+  | { ok: true; intent_id: string; intent_token: string }
   | { ok: false; reason: AuthFailureReason; message?: string }
 
 export type AuthOptions = {
@@ -118,7 +118,7 @@ async function fetchNonce(baseUrl: string, f: typeof fetch): Promise<string | nu
 }
 
 type RegisterResult =
-  | { ok: true; intent_id: string }
+  | { ok: true; intent_id: string; intent_token: string }
   | { ok: false; status: number; code?: string; message?: string }
 
 function asRecord(v: unknown): Record<string, unknown> | undefined {
@@ -191,7 +191,21 @@ async function postRegister(
     }
   }
 
-  return { ok: true, intent_id }
+  const intent_token = asNonEmptyString(record.intent_token)
+  if (!intent_token) {
+    const keys = Object.keys(record)
+    console.error("[wallet-auth] /api/auth/register: success body missing intent_token:", {
+      status: res.status,
+      keys,
+    })
+    return {
+      ok: false,
+      status: res.status,
+      message: `success body missing intent_token; got keys: [${keys.join(", ")}]`,
+    }
+  }
+
+  return { ok: true, intent_id, intent_token }
 }
 
 export async function authenticateWallet(options: AuthOptions): Promise<AuthResult> {
@@ -228,7 +242,7 @@ export async function authenticateWallet(options: AuthOptions): Promise<AuthResu
     return { ok: false, reason: "register_failed", message: detail }
   }
 
-  return { ok: true, intent_id: registered.intent_id }
+  return { ok: true, intent_id: registered.intent_id, intent_token: registered.intent_token }
 }
 
 export function walletAddressesMatch(a?: string, b?: string): boolean {

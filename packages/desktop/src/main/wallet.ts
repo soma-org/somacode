@@ -11,6 +11,7 @@ import {
   DEFAULT_ONRAMP_BASE_URL,
   DEFAULT_PAYMENT_GATEWAY_URL,
 } from "@opencode-ai/core/util/onramp-session"
+import { setIntentToken } from "@opencode-ai/core/util/intent-token"
 
 type EvmKeypair = {
   privateKey: Hex
@@ -144,6 +145,10 @@ export async function startCheckout(): Promise<WalletCheckoutResult> {
   })
 
   if (!result.ok) return { ok: false, reason: result.reason }
+
+  // Cache the JWT in-process for future protected onramp calls.
+  // Never forward to the renderer or any other host.
+  setIntentToken(result.walletAddress, result.intentToken)
 
   return {
     ok: true,

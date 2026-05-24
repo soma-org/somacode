@@ -16,6 +16,8 @@ export type OnrampCheckoutResult =
       publicKey: string
       oneTimeCode: string
       intentId: string
+      /** JWT minted by the backend at register-time, valid 1h. Use as `Authorization: Bearer <intentToken>` for protected onramp endpoints. Never send to other hosts; never log. */
+      intentToken: string
     }
   | { ok: false; reason: OnrampCheckoutFailureReason; message?: string }
 
@@ -59,5 +61,6 @@ export async function runOnrampCheckout(options: RunOnrampCheckoutOptions): Prom
     publicKey: options.publicKey,
     oneTimeCode,
     intentId: auth.intent_id,
+    intentToken: auth.intent_token,
   }
 }

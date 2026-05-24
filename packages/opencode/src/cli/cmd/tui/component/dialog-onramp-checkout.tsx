@@ -10,6 +10,7 @@ import {
 } from "@opencode-ai/core/util/onramp-session"
 import { ONRAMP_BASE_URL, PAYMENT_GATEWAY_URL } from "@/config/endpoints"
 import { runOnrampCheckout, type OnrampCheckoutFailureReason } from "@opencode-ai/core/util/wallet-checkout"
+import { setIntentToken } from "@opencode-ai/core/util/intent-token"
 import { usdcToMicros, type BridgeFailureReason } from "@opencode-ai/core/util/bridge"
 import { executeBridge } from "@/wallet/bridge"
 import * as SomaRuntime from "@/soma/runtime"
@@ -336,6 +337,8 @@ export function DialogOnrampCheckout() {
       setPhase({ kind: "error", reason: result.reason, message: result.message })
       return
     }
+
+    setIntentToken(result.walletAddress, result.intentToken)
 
     setActiveWallet(smart)
     setRedirectUrl(result.redirectUrl)
